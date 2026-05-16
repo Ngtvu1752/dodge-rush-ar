@@ -20,6 +20,8 @@ export class RedWallLeft implements Obstacle {
   readonly requiredAction = 'dodgeRight' as const
   hitZoneY: number
   inHitZone = false
+  graceStart = 0
+  result: 'success' | 'fail' | null = null
   private canvasH: number
 
   constructor(canvasWidth: number, canvasHeight: number, speed: number) {
@@ -63,6 +65,18 @@ export class RedWallLeft implements Obstacle {
           color: '#ffffff',
         })
       }
+
+      if (this.result === 'success') {
+        r.drawText('DODGED!', this.width / 2, Math.max(this.y - 20, 30), {
+          size: 36,
+          color: '#00ff88',
+        })
+      } else if (this.result === 'fail') {
+        r.drawText('HIT!', this.width / 2, Math.max(this.y - 20, 30), {
+          size: 36,
+          color: '#ff4444',
+        })
+      }
     }
   }
 }
@@ -81,6 +95,8 @@ export class RedWallRight implements Obstacle {
   readonly requiredAction = 'dodgeLeft' as const
   hitZoneY: number
   inHitZone = false
+  graceStart = 0
+  result: 'success' | 'fail' | null = null
   private canvasH: number
 
   constructor(canvasWidth: number, canvasHeight: number, speed: number) {
@@ -122,6 +138,18 @@ export class RedWallRight implements Obstacle {
         r.drawText(' <<<', this.x + this.width / 2, labelY + 30, {
           size: 28,
           color: '#ffffff',
+        })
+      }
+
+      if (this.result === 'success') {
+        r.drawText('DODGED!', this.x + this.width / 2, Math.max(this.y - 20, 30), {
+          size: 36,
+          color: '#00ff88',
+        })
+      } else if (this.result === 'fail') {
+        r.drawText('HIT!', this.x + this.width / 2, Math.max(this.y - 20, 30), {
+          size: 36,
+          color: '#ff4444',
         })
       }
     }

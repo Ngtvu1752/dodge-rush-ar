@@ -88,12 +88,14 @@ Shield is optional and should only be implemented after the core game is stable.
 ### 1. Red Wall Left
 A red obstacle appears on the left side of the play area.
 Required action: **Dodge right**.
-If the player does not dodge right in time, they lose health.
+The player succeeds if they actively dodge right OR are already standing safely on the right side when the wall reaches the hit zone.
+If the player is not on the correct side in time, they lose health.
 
 ### 2. Red Wall Right
 A red obstacle appears on the right side of the play area.
 Required action: **Dodge left**.
-If the player does not dodge left in time, they lose health.
+The player succeeds if they actively dodge left OR are already standing safely on the left side when the wall reaches the hit zone.
+If the player is not on the correct side in time, they lose health.
 
 ### 3. High Laser
 A horizontal laser appears around the upper body or head area.

@@ -78,6 +78,9 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'm' || e.key === 'M') {
       game.score.registerMiss()
     }
+    if (e.key === 'o' || e.key === 'O') {
+      game.debugSpawnBlueOrb()
+    }
   }
 })
 
@@ -88,6 +91,7 @@ function drawStats(): void {
     `Combo: ${s.combo}  x${s.multiplier.toFixed(1)}`,
     `HP: ${'♥'.repeat(Math.max(s.health, 0))}`,
     `Time: ${Math.ceil(s.remaining)}s`,
+    `Level: ${game.difficulty.level}`,
   ]
   lines.forEach((line, i) => {
     renderer.drawText(line, renderer.width - 10, 10 + i * 22, {
@@ -185,6 +189,7 @@ function gameLoop(timestamp: number) {
     const cal = calibration.data
     if (cal) {
       const action = gestureDetector.detect(pose, cal, timestamp)
+      game.evaluateCollisions(action, pose, timestamp)
 
       if (debugMode) {
         const hipX = (pose.leftHip.x + pose.rightHip.x) / 2
@@ -193,8 +198,11 @@ function gameLoop(timestamp: number) {
         const drop = hipY - cal.standingHipY
 
         const lines = [
+          `Difficulty: ${game.difficulty.level}`,
+          `Speed: ${game.difficulty.speed}  Interval: ${game.difficulty.spawnInterval.toFixed(1)}s`,
           `offset=${offset.toFixed(3)}  drop=${drop.toFixed(3)}`,
           `dodgeL=${action.dodgeLeft}  dodgeR=${action.dodgeRight}`,
+          `safeL=${action.positionalSafeLeft}  safeR=${action.positionalSafeRight}`,
           `squat=${action.squat}`,
           `Lhand=${action.leftHandActive}  Rhand=${action.rightHandActive}`,
           `shield=${action.shield}`,

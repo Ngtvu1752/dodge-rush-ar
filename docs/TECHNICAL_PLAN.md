@@ -264,7 +264,7 @@ export interface Obstacle {
 ```
 
 ### Collision and Evaluation
-- **Red Wall**: success if `dodgeRight`/`dodgeLeft`.
+- **Red Wall**: success if the player actively dodges (`dodgeRight`/`dodgeLeft`) OR is already positionally safe on the correct side (`positionalSafeRight`/`positionalSafeLeft`). Positional safety is computed from the raw hip-center offset vs `calibration.dodgeThreshold` without hysteresis.
 - **High Laser**: success if `squat`.
 - **Blue Orb**: success if hand overlap.
 
