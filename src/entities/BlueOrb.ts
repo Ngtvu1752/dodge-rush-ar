@@ -1,5 +1,6 @@
 import type { Renderer } from '../render/Renderer'
 import { ObstacleType, type Obstacle } from './Obstacle'
+import { ORB_LIFETIME_SEC } from '../config/gameConfig'
 
 let nextId = 0
 function makeId(): string {
@@ -13,31 +14,26 @@ export class BlueOrb implements Obstacle {
   y: number
   width: number
   height: number
-  speed: number
+  speed = 0
   active = true
   resolved = false
 
   readonly radius: number
-  hitZoneX: number
-  inHitZone = false
   graceStart = 0
   result: 'success' | 'fail' | null = null
-  private canvasW: number
 
-  constructor(canvasWidth: number, canvasHeight: number, speed: number) {
+  private age = 0
+  private lifetime = ORB_LIFETIME_SEC
+
+  constructor(canvasWidth: number, canvasHeight: number, _speed: number) {
     this.id = makeId()
     this.radius = 35
     this.width = this.radius * 2
     this.height = this.radius * 2
-    this.canvasW = canvasWidth
 
-    // Spawn at right edge, random Y in middle 60% of screen
-    this.x = canvasWidth + this.radius
-    this.y = canvasHeight * (0.2 + Math.random() * 0.6)
-    this.speed = speed
-
-    // Hit zone: center-right area of screen
-    this.hitZoneX = canvasWidth * 0.6
+    // Static spawn in center 50% of screen, middle 45% vertically
+    this.x = canvasWidth * (0.25 + Math.random() * 0.5)
+    this.y = canvasHeight * (0.2 + Math.random() * 0.45)
   }
 
   get centerX(): number {
@@ -49,41 +45,47 @@ export class BlueOrb implements Obstacle {
   }
 
   update(dt: number): void {
-    this.x -= this.speed * dt
-    this.inHitZone = this.x <= this.hitZoneX && this.x > 0
-    if (this.x + this.radius < 0) this.active = false
+    this.age += dt
+    if (this.age >= this.lifetime) this.active = false
   }
 
   render(r: Renderer): void {
-    const approaching = this.x < this.canvasW + this.radius && !this.inHitZone && this.x > 0
-    const fill = this.inHitZone
-      ? 'rgba(0, 120, 255, 0.6)'
-      : approaching
-        ? 'rgba(0, 120, 255, 0.35)'
-        : 'rgba(0, 120, 255, 0.2)'
-    const stroke = this.inHitZone ? '#4488ff' : '#2266cc'
+    // Pulse effect: radius oscillates to draw attention
+    const pulse = Math.sin(this.age * 5) * 5
+    const drawRadius = this.radius + pulse
 
-    r.drawCircle(this.x, this.y, this.radius, fill, stroke, 3)
+    // Fade out in the last 0.5 seconds
+    const fadeAlpha = this.age > this.lifetime - 0.5
+      ? (this.lifetime - this.age) / 0.5
+      : 1
+
+    const ctx = r.ctx
+    ctx.save()
+    ctx.globalAlpha = fadeAlpha
+
+    const fill = 'rgba(0, 120, 255, 0.6)'
+    const stroke = '#4488ff'
+    r.drawCircle(this.x, this.y, drawRadius, fill, stroke, 3)
 
     // Label
-    if (this.x < this.canvasW + this.radius) {
-      const labelY = this.y + this.radius + 20
-      r.drawText('TOUCH', this.x, labelY, {
-        size: 20,
-        color: this.inHitZone ? '#ffffff' : '#88bbff',
-      })
+    const labelY = this.y + drawRadius + 20
+    r.drawText('TOUCH', this.x, labelY, {
+      size: 20,
+      color: '#ffffff',
+    })
 
-      if (this.result === 'success') {
-        r.drawText('TOUCHED!', this.x, this.y - this.radius - 15, {
-          size: 36,
-          color: '#00ff88',
-        })
-      } else if (this.result === 'fail') {
-        r.drawText('MISSED', this.x, this.y - this.radius - 15, {
-          size: 36,
-          color: '#ff8844',
-        })
-      }
+    if (this.result === 'success') {
+      r.drawText('TOUCHED!', this.x, this.y - drawRadius - 15, {
+        size: 36,
+        color: '#00ff88',
+      })
+    } else if (this.result === 'fail') {
+      r.drawText('MISSED', this.x, this.y - drawRadius - 15, {
+        size: 36,
+        color: '#ff8844',
+      })
     }
+
+    ctx.restore()
   }
 }

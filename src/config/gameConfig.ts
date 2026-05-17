@@ -20,6 +20,8 @@ export const OBSTACLE_SPAWN_INTERVAL = 1.5
 export const OBSTACLE_SPEED = 300
 export const OBSTACLE_GRACE_WINDOW_MS = 200
 export const ORB_TOUCH_MARGIN = 40
+export const ORB_LIFETIME_SEC = 3.0
+export const RED_WALL_FORGIVENESS_MARGIN = 0.05
 
 // Difficulty phases
 export const DIFFICULTY_EASY_END = 20

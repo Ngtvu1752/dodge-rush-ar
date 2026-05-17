@@ -8,7 +8,8 @@ import { Calibration } from './input/Calibration'
 import { GestureDetector } from './input/GestureDetector'
 import { GameManager } from './game/GameManager'
 import { GameState } from './game/GameState'
-import { BASE_POINTS_SUCCESS } from './config/gameConfig'
+import { UIOverlay, type UIContext } from './render/UIOverlay'
+import { BASE_POINTS_SUCCESS, MAX_HEALTH } from './config/gameConfig'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!
 const renderer = new Renderer(canvas)
@@ -19,6 +20,7 @@ const debugSkeleton = new DebugSkeleton()
 const calibration = new Calibration()
 const gestureDetector = new GestureDetector()
 const game = new GameManager()
+const uiOverlay = new UIOverlay()
 
 let debugMode = false
 let lastTimestamp = 0
@@ -71,12 +73,15 @@ window.addEventListener('keydown', (e) => {
   if (state === GameState.Playing) {
     if (e.key === 's' || e.key === 'S') {
       game.score.registerSuccess(BASE_POINTS_SUCCESS)
+      uiOverlay.showFeedback('DODGED!', '#00ff88')
     }
     if (e.key === 'f' || e.key === 'F') {
       game.score.registerFail()
+      uiOverlay.showFeedback('HIT!', '#ff4444')
     }
     if (e.key === 'm' || e.key === 'M') {
       game.score.registerMiss()
+      uiOverlay.showFeedback('MISS', '#ff8844')
     }
     if (e.key === 'o' || e.key === 'O') {
       game.debugSpawnBlueOrb()
@@ -84,40 +89,27 @@ window.addEventListener('keydown', (e) => {
   }
 })
 
-function drawStats(): void {
+function buildUIContext(): UIContext {
   const s = game.score
-  const lines = [
-    `Score: ${s.score}`,
-    `Combo: ${s.combo}  x${s.multiplier.toFixed(1)}`,
-    `HP: ${'♥'.repeat(Math.max(s.health, 0))}`,
-    `Time: ${Math.ceil(s.remaining)}s`,
-    `Level: ${game.difficulty.level}`,
-  ]
-  lines.forEach((line, i) => {
-    renderer.drawText(line, renderer.width - 10, 10 + i * 22, {
-      size: 18,
-      color: '#ffffff',
-      align: 'right',
-      baseline: 'top',
-    })
-  })
-}
-
-function drawResult(): void {
-  const s = game.score
-  const cx = renderer.width / 2
-  const lines = [
-    { text: 'Result', y: -80, size: 48, color: '#ffffff' },
-    { text: `Score: ${s.score}`, y: -20, size: 28, color: '#00ff88' },
-    { text: `Best Combo: ${s.bestCombo}`, y: 15, size: 22, color: '#ffffff' },
-    { text: `Successes: ${s.successes}`, y: 50, size: 18, color: '#88ff88' },
-    { text: `Fails: ${s.fails}`, y: 75, size: 18, color: '#ff8888' },
-    { text: `Misses: ${s.misses}`, y: 100, size: 18, color: '#ffaa88' },
-    { text: 'Press SPACE to restart', y: 145, size: 22, color: '#ffffff' },
-  ]
-  lines.forEach(({ text, y, size, color }) => {
-    renderer.drawText(text, cx, renderer.height / 2 + y, { size, color })
-  })
+  return {
+    state: game.getState(),
+    score: s.score,
+    combo: s.combo,
+    bestCombo: s.bestCombo,
+    multiplier: s.multiplier,
+    health: s.health,
+    maxHealth: MAX_HEALTH,
+    remaining: s.remaining,
+    successes: s.successes,
+    fails: s.fails,
+    misses: s.misses,
+    difficulty: game.difficulty.level,
+    countdown: game.getCountdownNumber(),
+    calibrationStatus: calibration.status,
+    calibrationProgress: calibration.progress,
+    cameraError: camera.errorMessage ?? '',
+    debug: debugMode,
+  }
 }
 
 function gameLoop(timestamp: number) {
@@ -129,14 +121,7 @@ function gameLoop(timestamp: number) {
   renderer.clear()
 
   if (!camera.isReady) {
-    const state = game.getState()
-    if (camera.status === 'error') {
-      renderer.drawMultilineCentered(camera.errorMessage, 20, '#ff4444')
-    } else if (state === GameState.CameraPermission) {
-      renderer.drawCenteredText('Requesting camera access...', 24)
-    } else {
-      renderer.drawCenteredText('Dodge Rush AR — Initializing...', 24)
-    }
+    uiOverlay.render(renderer, buildUIContext())
     requestAnimationFrame(gameLoop)
     return
   }
@@ -152,44 +137,45 @@ function gameLoop(timestamp: number) {
 
   const state = game.getState()
 
-  if (state === GameState.Calibration) {
-    if (calibration.status === 'idle') {
-      renderer.drawCenteredText('Press C to calibrate', 28)
-    } else if (calibration.status === 'collecting') {
-      if (calibration.feed(pose)) {
-        game.completeCalibration()
-      } else if (!pose.detected) {
-        renderer.drawCenteredText('No pose detected — stand in frame', 22, '#ffaa00')
-      } else {
-        const pct = Math.round(calibration.progress * 100)
-        renderer.drawCenteredText('Stand still — calibrating...', 24)
-        renderer.drawText(`${pct}%`, renderer.width / 2, renderer.height / 2 + 40, {
-          size: 48,
-          color: '#00ff88',
-        })
-      }
+  // Calibration state needs special handling for pose feeding
+  if (state === GameState.Calibration && calibration.status === 'collecting') {
+    if (calibration.feed(pose)) {
+      game.completeCalibration()
     }
-  } else if (state === GameState.Ready) {
-    renderer.drawText('Calibration complete!', renderer.width / 2, renderer.height / 2 - 25, {
-      size: 28,
-      color: '#00ff88',
-    })
-    renderer.drawText('Press SPACE to start', renderer.width / 2, renderer.height / 2 + 25, {
-      size: 22,
-      color: '#ffffff',
-    })
-  } else if (state === GameState.Countdown) {
-    renderer.drawCenteredText(game.getCountdownNumber(), 96, '#ffffff')
-  } else if (state === GameState.Playing) {
+  }
+
+  // Playing state: render obstacles and evaluate collisions
+  if (state === GameState.Playing) {
     for (const o of game.getObstacles()) {
       o.render(renderer)
     }
-    drawStats()
 
     const cal = calibration.data
     if (cal) {
       const action = gestureDetector.detect(pose, cal, timestamp)
       game.evaluateCollisions(action, pose, timestamp)
+
+      // Show feedback based on obstacle results
+      for (const o of game.getObstacles()) {
+        if (o.resolved && o.result) {
+          if (o.result === 'success') {
+            if (o.type === 'BlueOrb') {
+              uiOverlay.showFeedback('TOUCHED!', '#00ff88')
+            } else if (o.type === 'HighLaser') {
+              uiOverlay.showFeedback('SQUAT OK', '#00ff88')
+            } else {
+              uiOverlay.showFeedback('DODGED!', '#00ff88')
+            }
+          } else if (o.result === 'fail') {
+            if (o.type === 'BlueOrb') {
+              uiOverlay.showFeedback('MISS', '#ff8844')
+            } else {
+              uiOverlay.showFeedback('HIT!', '#ff4444')
+            }
+          }
+          o.result = null  // Clear after showing
+        }
+      }
 
       if (debugMode) {
         const hipX = (pose.leftHip.x + pose.rightHip.x) / 2
@@ -202,7 +188,6 @@ function gameLoop(timestamp: number) {
           `Speed: ${game.difficulty.speed}  Interval: ${game.difficulty.spawnInterval.toFixed(1)}s`,
           `offset=${offset.toFixed(3)}  drop=${drop.toFixed(3)}`,
           `dodgeL=${action.dodgeLeft}  dodgeR=${action.dodgeRight}`,
-          `safeL=${action.positionalSafeLeft}  safeR=${action.positionalSafeRight}`,
           `squat=${action.squat}`,
           `Lhand=${action.leftHandActive}  Rhand=${action.rightHandActive}`,
           `shield=${action.shield}`,
@@ -217,18 +202,10 @@ function gameLoop(timestamp: number) {
         })
       }
     }
-  } else if (state === GameState.GameOver) {
-    drawStats()
-    renderer.drawCenteredText('Game Over', 48, '#ff4444')
-    renderer.drawText(
-      'Press SPACE to see results',
-      renderer.width / 2,
-      renderer.height / 2 + 50,
-      { size: 22, color: '#ffffff' },
-    )
-  } else if (state === GameState.Result) {
-    drawResult()
   }
+
+  // Render UI overlay on top of everything
+  uiOverlay.render(renderer, buildUIContext())
 
   requestAnimationFrame(gameLoop)
 }

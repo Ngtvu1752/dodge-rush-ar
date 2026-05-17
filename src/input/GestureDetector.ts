@@ -9,8 +9,6 @@ export type PlayerAction = {
   leftHandActive: boolean
   rightHandActive: boolean
   shield: boolean
-  positionalSafeLeft: boolean
-  positionalSafeRight: boolean
 }
 
 const EMPTY_ACTION: PlayerAction = {
@@ -20,8 +18,6 @@ const EMPTY_ACTION: PlayerAction = {
   leftHandActive: false,
   rightHandActive: false,
   shield: false,
-  positionalSafeLeft: false,
-  positionalSafeRight: false,
 }
 
 type GestureKey = keyof PlayerAction
@@ -86,12 +82,7 @@ export class GestureDetector {
       pose.leftWrist.x < pose.leftShoulder.x - spread &&
       pose.rightWrist.x > pose.rightShoulder.x + spread
 
-    // Positional safety: raw offset check without hysteresis.
-    // Used by CollisionSystem for "already safe" evaluation.
-    const positionalSafeLeft = offset > cal.dodgeThreshold
-    const positionalSafeRight = offset < -cal.dodgeThreshold
-
-    return { dodgeLeft, dodgeRight, squat, leftHandActive, rightHandActive, shield, positionalSafeLeft, positionalSafeRight }
+    return { dodgeLeft, dodgeRight, squat, leftHandActive, rightHandActive, shield }
   }
 
   private clearIfExpired(timestamp: number): void {

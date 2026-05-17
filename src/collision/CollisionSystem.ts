@@ -5,7 +5,7 @@ import type { BlueOrb } from '../entities/BlueOrb'
 import type { PlayerAction } from '../input/GestureDetector'
 import type { ScoreManager } from '../game/ScoreManager'
 import type { PoseData } from '../pose/PoseTypes'
-import { OBSTACLE_GRACE_WINDOW_MS, BASE_POINTS_SUCCESS, BASE_POINTS_ORB, ORB_TOUCH_MARGIN } from '../config/gameConfig'
+import { OBSTACLE_GRACE_WINDOW_MS, BASE_POINTS_SUCCESS, BASE_POINTS_ORB, ORB_TOUCH_MARGIN, RED_WALL_FORGIVENESS_MARGIN } from '../config/gameConfig'
 
 type RedWall = RedWallLeft | RedWallRight
 
@@ -27,7 +27,7 @@ export class CollisionSystem {
       if (o.resolved) continue
 
       if (isRedWall(o)) {
-        this.evaluateRedWall(o, action, score, timestamp)
+        this.evaluateRedWall(o, pose, score, timestamp)
       } else if (isHighLaser(o)) {
         this.evaluateHighLaser(o, action, score, timestamp)
       } else if (isBlueOrb(o)) {
@@ -36,7 +36,7 @@ export class CollisionSystem {
     }
   }
 
-  private evaluateRedWall(wall: RedWall, action: PlayerAction, score: ScoreManager, timestamp: number): void {
+  private evaluateRedWall(wall: RedWall, pose: PoseData, score: ScoreManager, timestamp: number): void {
     if (!wall.inHitZone) return
 
     if (wall.graceStart === 0) {
@@ -44,16 +44,61 @@ export class CollisionSystem {
     }
 
     if (timestamp - wall.graceStart >= OBSTACLE_GRACE_WINDOW_MS) {
-      const success =
-        (wall.requiredAction === 'dodgeRight' && (action.dodgeRight || action.positionalSafeRight)) ||
-        (wall.requiredAction === 'dodgeLeft' && (action.dodgeLeft || action.positionalSafeLeft))
-
-      if (success) {
-        score.registerSuccess(BASE_POINTS_SUCCESS)
-        wall.result = 'success'
-      } else {
+      if (!pose.detected) {
         score.registerFail()
         wall.result = 'fail'
+        wall.resolved = true
+        return
+      }
+
+      const canvasW = window.innerWidth
+      const canvasH = window.innerHeight
+
+      // Convert torso landmarks to canvas coordinates (mirrored)
+      const lsX = (1 - pose.leftShoulder.x) * canvasW
+      const lsY = pose.leftShoulder.y * canvasH
+      const rsX = (1 - pose.rightShoulder.x) * canvasW
+      const rsY = pose.rightShoulder.y * canvasH
+      const lhX = (1 - pose.leftHip.x) * canvasW
+      const lhY = pose.leftHip.y * canvasH
+      const rhX = (1 - pose.rightHip.x) * canvasW
+      const rhY = pose.rightHip.y * canvasH
+
+      // Player torso bounding box (handles leaning)
+      const playerLeft = Math.min(lsX, lhX)
+      const playerRight = Math.max(rsX, rhX)
+      const playerTop = Math.min(lsY, rsY)
+      const playerBottom = Math.max(lhY, rhY)
+
+      // Wall bounding box with forgiveness margin on inner edge
+      const margin = RED_WALL_FORGIVENESS_MARGIN * canvasW
+      let wallLeft: number
+      let wallRight: number
+
+      if (wall.type === 'RedWallLeft') {
+        wallLeft = wall.x
+        wallRight = wall.x + wall.width - margin
+      } else {
+        wallLeft = wall.x + margin
+        wallRight = wall.x + wall.width
+      }
+
+      const wallTop = wall.y
+      const wallBottom = wall.y + wall.height
+
+      // AABB overlap test
+      const overlap =
+        playerLeft < wallRight &&
+        playerRight > wallLeft &&
+        playerTop < wallBottom &&
+        playerBottom > wallTop
+
+      if (overlap) {
+        score.registerFail()
+        wall.result = 'fail'
+      } else {
+        score.registerSuccess(BASE_POINTS_SUCCESS)
+        wall.result = 'success'
       }
       wall.resolved = true
     }
@@ -88,7 +133,7 @@ export class CollisionSystem {
     }
 
     // Only check collision while orb is on screen
-    if (!orb.inHitZone || orb.resolved) return
+    if (orb.resolved) return
 
     if (!pose.detected) return
 

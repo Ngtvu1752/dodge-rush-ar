@@ -19,6 +19,7 @@ export interface Obstacle {
   speed: number
   active: boolean
   resolved: boolean
+  result: 'success' | 'fail' | null
   update(dt: number): void
   render(renderer: Renderer): void
 }

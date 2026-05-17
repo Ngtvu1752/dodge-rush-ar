@@ -1,6 +1,6 @@
 export class Renderer {
   private canvas: HTMLCanvasElement
-  private ctx: CanvasRenderingContext2D
+  readonly ctx: CanvasRenderingContext2D
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
