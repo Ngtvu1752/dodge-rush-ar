@@ -22,10 +22,12 @@ export class Renderer {
     return this.canvas.height
   }
 
-  clear(): void {
+  clear(fillBackground = true): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
-    this.ctx.fillStyle = '#1a1a2e'
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    if (fillBackground) {
+      this.ctx.fillStyle = '#1a1a2e'
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height)
+    }
   }
 
   drawVideo(video: HTMLVideoElement): void {

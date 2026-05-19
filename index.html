@@ -7,7 +7,11 @@
     <title>Dodge Rush AR</title>
   </head>
   <body>
-    <canvas id="game-canvas"></canvas>
+    <div id="game-container">
+      <canvas id="game-canvas"></canvas>
+      <canvas id="entity-canvas"></canvas>
+      <div id="ui-root"></div>
+    </div>
     <video id="webcam" autoplay playsinline style="display: none"></video>
     <script type="module" src="/src/main.ts"></script>
   </body>

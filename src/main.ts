@@ -1,6 +1,8 @@
 import './style.css'
 import { CameraManager } from './camera/CameraManager'
 import { Renderer } from './render/Renderer'
+import { EntityRenderer } from './render/EntityRenderer'
+import { SceneManager } from './render/SceneManager'
 import { PoseTracker } from './pose/PoseTracker'
 import { PoseSmoother } from './pose/PoseSmoother'
 import { DebugSkeleton } from './render/DebugSkeleton'
@@ -8,11 +10,26 @@ import { Calibration } from './input/Calibration'
 import { GestureDetector } from './input/GestureDetector'
 import { GameManager } from './game/GameManager'
 import { GameState } from './game/GameState'
-import { UIOverlay, type UIContext } from './render/UIOverlay'
+import { type UIContext } from './render/UIOverlay'
+import { UIRoot } from './render/ui/UIRoot'
+import { ObstacleVisualManager } from './render/entities/ObstacleVisualManager'
+import { ParticleEmitter } from './render/vfx/ParticleEmitter'
+import { ScreenShake } from './render/vfx/ScreenShake'
+import { FeedbackPopup } from './render/vfx/FeedbackPopup'
 import { BASE_POINTS_SUCCESS, MAX_HEALTH } from './config/gameConfig'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!
+const entityCanvas = document.querySelector<HTMLCanvasElement>('#entity-canvas')!
 const renderer = new Renderer(canvas)
+const entityRenderer = new EntityRenderer(entityCanvas)
+const sceneManager = new SceneManager(entityRenderer.renderer)
+const obstacleVisualManager = new ObstacleVisualManager(sceneManager.scene)
+const particleEmitter = new ParticleEmitter(sceneManager.scene)
+const uiRoot = document.querySelector<HTMLDivElement>('#ui-root')!
+const gameContainer = document.querySelector<HTMLDivElement>('#game-container')!
+const screenShake = new ScreenShake(gameContainer)
+const feedbackPopup = new FeedbackPopup(uiRoot)
+const domUI = new UIRoot(uiRoot, MAX_HEALTH)
 const camera = new CameraManager('webcam')
 const poseTracker = new PoseTracker()
 const poseSmoother = new PoseSmoother()
@@ -20,7 +37,6 @@ const debugSkeleton = new DebugSkeleton()
 const calibration = new Calibration()
 const gestureDetector = new GestureDetector()
 const game = new GameManager()
-const uiOverlay = new UIOverlay()
 
 let debugMode = false
 let lastTimestamp = 0
@@ -32,6 +48,7 @@ camera.init().then((ok) => {
     console.error(camera.errorMessage)
     return
   }
+  sceneManager.setBackgroundVideo(camera.getVideo())
   poseTracker.init().then((loaded) => {
     if (!loaded) {
       console.error(poseTracker.error)
@@ -46,6 +63,7 @@ window.addEventListener('keydown', (e) => {
 
   if (e.key === 'd' || e.key === 'D') {
     debugMode = !debugMode
+    document.body.classList.toggle('debug-active', debugMode)
   }
 
   if (e.key === 'c' || e.key === 'C') {
@@ -73,15 +91,15 @@ window.addEventListener('keydown', (e) => {
   if (state === GameState.Playing) {
     if (e.key === 's' || e.key === 'S') {
       game.score.registerSuccess(BASE_POINTS_SUCCESS)
-      uiOverlay.showFeedback('DODGED!', '#00ff88')
+      feedbackPopup.show('DODGED!', '#00ff88')
     }
     if (e.key === 'f' || e.key === 'F') {
       game.score.registerFail()
-      uiOverlay.showFeedback('HIT!', '#ff4444')
+      feedbackPopup.show('HIT!', '#ff4444')
     }
     if (e.key === 'm' || e.key === 'M') {
       game.score.registerMiss()
-      uiOverlay.showFeedback('MISS', '#ff8844')
+      feedbackPopup.show('MISS', '#ff8844')
     }
     if (e.key === 'o' || e.key === 'O') {
       game.debugSpawnBlueOrb()
@@ -118,15 +136,13 @@ function gameLoop(timestamp: number) {
 
   game.update(dt)
 
-  renderer.clear()
+  renderer.clear(!debugMode)
 
   if (!camera.isReady) {
-    uiOverlay.render(renderer, buildUIContext())
+    domUI.update(buildUIContext())
     requestAnimationFrame(gameLoop)
     return
   }
-
-  renderer.drawVideo(camera.getVideo())
 
   const raw = poseTracker.detect(camera.getVideo(), timestamp)
   const pose = poseSmoother.smooth(raw)
@@ -146,8 +162,16 @@ function gameLoop(timestamp: number) {
 
   // Playing state: render obstacles and evaluate collisions
   if (state === GameState.Playing) {
-    for (const o of game.getObstacles()) {
-      o.render(renderer)
+    const obstacles = game.getObstacles()
+
+    // Sync Three.js visuals (creates/disposes adapters as needed)
+    obstacleVisualManager.sync(obstacles, renderer.width, renderer.height)
+
+    // Canvas2D fallback for obstacles without Three.js visuals
+    for (const o of obstacles) {
+      if (!obstacleVisualManager.hasVisual(o.id)) {
+        o.render(renderer)
+      }
     }
 
     const cal = calibration.data
@@ -158,19 +182,27 @@ function gameLoop(timestamp: number) {
       // Show feedback based on obstacle results
       for (const o of game.getObstacles()) {
         if (o.resolved && o.result) {
+          const screenX = o.x + o.width / 2
+          const screenY = o.y + o.height / 2
+
           if (o.result === 'success') {
             if (o.type === 'BlueOrb') {
-              uiOverlay.showFeedback('TOUCHED!', '#00ff88')
+              feedbackPopup.show('TOUCHED!', '#00ff88', screenX, screenY)
+              particleEmitter.burst(screenX, screenY, 'sparkle')
             } else if (o.type === 'HighLaser') {
-              uiOverlay.showFeedback('SQUAT OK', '#00ff88')
+              feedbackPopup.show('SQUAT OK', '#00ff88', screenX, screenY)
+              particleEmitter.burst(screenX, screenY, 'success')
             } else {
-              uiOverlay.showFeedback('DODGED!', '#00ff88')
+              feedbackPopup.show('DODGED!', '#00ff88', screenX, screenY)
+              particleEmitter.burst(screenX, screenY, 'success')
             }
           } else if (o.result === 'fail') {
             if (o.type === 'BlueOrb') {
-              uiOverlay.showFeedback('MISS', '#ff8844')
+              feedbackPopup.show('MISS', '#ff8844', screenX, screenY)
             } else {
-              uiOverlay.showFeedback('HIT!', '#ff4444')
+              feedbackPopup.show('HIT!', '#ff4444', screenX, screenY)
+              particleEmitter.burst(screenX, screenY, 'fail')
+              screenShake.shake(8)
             }
           }
           o.result = null  // Clear after showing
@@ -204,8 +236,15 @@ function gameLoop(timestamp: number) {
     }
   }
 
-  // Render UI overlay on top of everything
-  uiOverlay.render(renderer, buildUIContext())
+  // Update VFX systems
+  particleEmitter.update(dt)
+  screenShake.apply()
+
+  // Render Three.js entities (obstacles, particles) over webcam with bloom
+  sceneManager.render()
+
+  // Render DOM UI overlay on top of everything
+  domUI.update(buildUIContext())
 
   requestAnimationFrame(gameLoop)
 }

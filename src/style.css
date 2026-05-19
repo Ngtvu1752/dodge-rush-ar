@@ -1,18 +1,308 @@
-* {
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   width: 100%;
   height: 100%;
   overflow: hidden;
   background: #000;
+  font-family: 'Nunito', 'Segoe UI', system-ui, sans-serif;
+  color: #ffffff;
+}
+
+/* ── Layout stacking ── */
+
+#game-container {
+  position: fixed;
+  inset: 0;
 }
 
 #game-canvas {
-  display: block;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
+}
+
+.debug-active #game-canvas {
+  z-index: 50;
+}
+
+#entity-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  background: transparent;
+}
+
+#ui-root {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+#ui-root > * {
+  pointer-events: auto;
+}
+
+/* ── Glass-morphism base ── */
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+  padding: 16px 24px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+/* ── HUD panels ── */
+
+.hud-panel {
+  position: fixed;
+  z-index: 20;
+  padding: 12px 20px;
+  border-radius: 16px;
+  pointer-events: none;
+}
+
+.hud-right {
+  top: 16px;
+  right: 16px;
+  text-align: right;
+}
+
+.hud-left {
+  top: 16px;
+  left: 16px;
+}
+
+.hud-score {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #ffcc00;
+  text-shadow: 0 0 10px rgba(255, 204, 0, 0.5);
+}
+
+.hud-combo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-top: 4px;
+}
+
+.hud-level {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #88ccff;
+  margin-top: 4px;
+}
+
+.hud-timer {
+  font-size: 1.3rem;
+  font-weight: 900;
+  color: #ffffff;
+}
+
+/* ── Health bar ── */
+
+.health-bar {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
+  padding: 10px 16px;
+  border-radius: 16px;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.heart {
+  font-size: 1.4rem;
+  color: #ff4444;
+  transition: filter 0.3s ease, opacity 0.3s ease;
+  text-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+}
+
+.heart-lost {
+  filter: grayscale(1) opacity(0.3);
+  text-shadow: none;
+}
+
+/* ── Menu overlay ── */
+
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 30;
+  pointer-events: auto;
+}
+
+.menu-content {
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  padding: 32px 40px;
+}
+
+.menu-title {
+  font-size: 2.5rem;
+  font-weight: 900;
+  margin-bottom: 16px;
+  text-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+}
+
+.menu-text {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.menu-hint {
+  font-size: 0.9rem;
+  color: #aaaaaa;
+  margin-top: 8px;
+}
+
+/* ── Countdown ── */
+
+.countdown-text {
+  font-size: 8rem;
+  font-weight: 900;
+  color: #ffffff;
+  text-shadow: 0 0 30px rgba(255, 255, 255, 0.5);
+}
+
+/* ── Instruction cards ── */
+
+.instruction-cards {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: center;
+}
+
+.instruction-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  flex: 1;
+  max-width: 140px;
+}
+
+.card-icon {
+  font-size: 1.8rem;
+}
+
+.card-text {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #cccccc;
+}
+
+/* ── Stats grid (Result screen) ── */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.stat-label {
+  color: #aaaaaa;
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  font-weight: 900;
+  font-size: 0.95rem;
+}
+
+/* ── Progress bar ── */
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00ff88, #00ccff);
+  border-radius: 4px;
+  transition: width 0.1s ease;
+}
+
+/* ── Score big number ── */
+
+.score-big {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #ffcc00;
+  text-shadow: 0 0 20px rgba(255, 204, 0, 0.5);
+}
+
+/* ── Utility text classes ── */
+
+.text-accent { color: #00ff88; }
+.text-glow {
+  color: #00ff88;
+  text-shadow: 0 0 15px rgba(0, 255, 136, 0.5);
+}
+.text-error {
+  color: #ff4444;
+  text-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+}
+.text-success {
+  color: #00ff88;
+}
+.text-gold {
+  color: #ffcc00;
+}
+
+/* ── Animations ── */
+
+@keyframes pulse-glow {
+  0%, 100% { text-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }
+  50% { text-shadow: 0 0 25px rgba(0, 255, 136, 0.7); }
+}
+
+.pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
 }
