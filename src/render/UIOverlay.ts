@@ -19,6 +19,7 @@ export type UIContext = {
   calibrationStatus: string
   calibrationProgress: number
   cameraError: string
+  loadingMessage: string
   debug: boolean
 }
 

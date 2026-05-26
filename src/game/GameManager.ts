@@ -3,9 +3,10 @@ import { COUNTDOWN_SECONDS } from '../config/gameConfig'
 import { ScoreManager } from './ScoreManager'
 import { DifficultyManager } from './DifficultyManager'
 import { type Obstacle, ObstacleType } from '../entities/Obstacle'
-import { RedWallLeft, RedWallRight } from '../entities/RedWall'
+import { RedWallCenter, RedWallLeft, RedWallRight } from '../entities/RedWall'
 import { HighLaser } from '../entities/HighLaser'
 import { BlueOrb } from '../entities/BlueOrb'
+import { Meteor } from '../entities/Meteor'
 import { CollisionSystem } from '../collision/CollisionSystem'
 import type { PlayerAction } from '../input/GestureDetector'
 import type { PoseData } from '../pose/PoseTypes'
@@ -13,8 +14,10 @@ import type { PoseData } from '../pose/PoseTypes'
 const MVP_TYPES = [
   ObstacleType.RedWallLeft,
   ObstacleType.RedWallRight,
+  ObstacleType.RedWallCenter,
   ObstacleType.HighLaser,
   ObstacleType.BlueOrb,
+  ObstacleType.Meteor,
 ]
 
 export class GameManager {
@@ -179,12 +182,20 @@ export class GameManager {
         obstacle = new RedWallRight(w, h, speed)
         this.difficulty.markDangerousSpawned(this.spawnTimestamp)
         break
+      case ObstacleType.RedWallCenter:
+        obstacle = new RedWallCenter(w, h, speed)
+        this.difficulty.markDangerousSpawned(this.spawnTimestamp)
+        break
       case ObstacleType.HighLaser:
         obstacle = new HighLaser(w, h, speed)
         this.difficulty.markDangerousSpawned(this.spawnTimestamp)
         break
       case ObstacleType.BlueOrb:
         obstacle = new BlueOrb(w, h, speed)
+        break
+      case ObstacleType.Meteor:
+        obstacle = new Meteor(w, h, speed)
+        this.difficulty.markDangerousSpawned(this.spawnTimestamp)
         break
     }
 

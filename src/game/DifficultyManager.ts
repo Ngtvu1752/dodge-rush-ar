@@ -54,7 +54,9 @@ export class DifficultyManager {
 
   isDangerous(type: ObstacleType): boolean {
     return type === ObstacleType.RedWallLeft ||
+      type === ObstacleType.RedWallCenter ||
       type === ObstacleType.RedWallRight ||
-      type === ObstacleType.HighLaser
+      type === ObstacleType.HighLaser ||
+      type === ObstacleType.Meteor
   }
 }

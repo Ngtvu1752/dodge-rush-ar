@@ -1,16 +1,17 @@
 import type { Obstacle } from '../entities/Obstacle'
-import type { RedWallLeft, RedWallRight } from '../entities/RedWall'
+import type { RedWallCenter, RedWallLeft, RedWallRight } from '../entities/RedWall'
 import type { HighLaser } from '../entities/HighLaser'
 import type { BlueOrb } from '../entities/BlueOrb'
+import type { Meteor } from '../entities/Meteor'
 import type { PlayerAction } from '../input/GestureDetector'
 import type { ScoreManager } from '../game/ScoreManager'
 import type { PoseData } from '../pose/PoseTypes'
-import { OBSTACLE_GRACE_WINDOW_MS, BASE_POINTS_SUCCESS, BASE_POINTS_ORB, ORB_TOUCH_MARGIN, RED_WALL_FORGIVENESS_MARGIN } from '../config/gameConfig'
+import { OBSTACLE_GRACE_WINDOW_MS, BASE_POINTS_SUCCESS, BASE_POINTS_ORB, ORB_TOUCH_MARGIN, RED_WALL_FORGIVENESS_MARGIN, OBSTACLE_Z_HIT_ZONE, METEOR_HIT_ZONE_Z } from '../config/gameConfig'
 
-type RedWall = RedWallLeft | RedWallRight
+type RedWall = RedWallLeft | RedWallRight | RedWallCenter
 
 function isRedWall(o: Obstacle): o is RedWall {
-  return o.type === 'RedWallLeft' || o.type === 'RedWallRight'
+  return o.type === 'RedWallLeft' || o.type === 'RedWallRight' || o.type === 'RedWallCenter'
 }
 
 function isHighLaser(o: Obstacle): o is HighLaser {
@@ -19,6 +20,10 @@ function isHighLaser(o: Obstacle): o is HighLaser {
 
 function isBlueOrb(o: Obstacle): o is BlueOrb {
   return o.type === 'BlueOrb'
+}
+
+function isMeteor(o: Obstacle): o is Meteor {
+  return o.type === 'Meteor'
 }
 
 export class CollisionSystem {
@@ -32,12 +37,15 @@ export class CollisionSystem {
         this.evaluateHighLaser(o, action, score, timestamp)
       } else if (isBlueOrb(o)) {
         this.evaluateBlueOrb(o, pose, score)
+      } else if (isMeteor(o)) {
+        this.evaluateMeteor(o, pose, score, timestamp)
       }
     }
   }
 
   private evaluateRedWall(wall: RedWall, pose: PoseData, score: ScoreManager, timestamp: number): void {
-    if (!wall.inHitZone) return
+    // Only evaluate when wall is at camera depth (z near 0) and in Y hit zone
+    if (!wall.inHitZone || wall.z > OBSTACLE_Z_HIT_ZONE) return
 
     if (wall.graceStart === 0) {
       wall.graceStart = timestamp
@@ -78,9 +86,12 @@ export class CollisionSystem {
       if (wall.type === 'RedWallLeft') {
         wallLeft = wall.x
         wallRight = wall.x + wall.width - margin
-      } else {
+      } else if (wall.type === 'RedWallRight') {
         wallLeft = wall.x + margin
         wallRight = wall.x + wall.width
+      } else {
+        wallLeft = wall.x + margin
+        wallRight = wall.x + wall.width - margin
       }
 
       const wallTop = wall.y
@@ -105,7 +116,8 @@ export class CollisionSystem {
   }
 
   private evaluateHighLaser(laser: HighLaser, action: PlayerAction, score: ScoreManager, timestamp: number): void {
-    if (!laser.inHitZone) return
+    // Only evaluate when laser is at camera depth (z near 0) and in Y hit zone
+    if (!laser.inHitZone || laser.z > OBSTACLE_Z_HIT_ZONE) return
 
     if (laser.graceStart === 0) {
       laser.graceStart = timestamp
@@ -146,22 +158,85 @@ export class CollisionSystem {
     const rightWristX = (1 - pose.rightWrist.x) * canvasW
     const rightWristY = pose.rightWrist.y * canvasH
 
+    // Use projected screen-space center and radius (matches visual position/size)
+    const orbX = orb.centerX
+    const orbY = orb.centerY
+    const orbR = orb.screenRadius
+
     // Distance from orb center to each wrist
-    const dxL = orb.centerX - leftWristX
-    const dyL = orb.centerY - leftWristY
+    const dxL = orbX - leftWristX
+    const dyL = orbY - leftWristY
     const distLeft = Math.sqrt(dxL * dxL + dyL * dyL)
 
-    const dxR = orb.centerX - rightWristX
-    const dyR = orb.centerY - rightWristY
+    const dxR = orbX - rightWristX
+    const dyR = orbY - rightWristY
     const distRight = Math.sqrt(dxR * dxR + dyR * dyR)
 
-    // Forgiving collision: orb radius + generous margin
-    const touchRadius = orb.radius + ORB_TOUCH_MARGIN
+    // Forgiving collision: scaled orb radius + generous margin
+    const touchRadius = orbR + ORB_TOUCH_MARGIN
 
     if (distLeft <= touchRadius || distRight <= touchRadius) {
       score.registerSuccess(BASE_POINTS_ORB)
       orb.result = 'success'
       orb.resolved = true
+    }
+  }
+
+  private evaluateMeteor(meteor: Meteor, pose: PoseData, score: ScoreManager, timestamp: number): void {
+    if (!meteor.inHitZone || meteor.worldZ > METEOR_HIT_ZONE_Z) return
+
+    if (meteor.graceStart === 0) {
+      meteor.graceStart = timestamp
+    }
+
+    if (timestamp - meteor.graceStart >= OBSTACLE_GRACE_WINDOW_MS) {
+      if (!pose.detected) {
+        score.registerFail()
+        meteor.result = 'fail'
+        meteor.resolved = true
+        return
+      }
+
+      const canvasW = window.innerWidth
+      const canvasH = window.innerHeight
+
+      // Convert torso landmarks to canvas coordinates (mirrored)
+      const lsX = (1 - pose.leftShoulder.x) * canvasW
+      const lsY = pose.leftShoulder.y * canvasH
+      const rsX = (1 - pose.rightShoulder.x) * canvasW
+      const rsY = pose.rightShoulder.y * canvasH
+      const lhX = (1 - pose.leftHip.x) * canvasW
+      const lhY = pose.leftHip.y * canvasH
+      const rhX = (1 - pose.rightHip.x) * canvasW
+      const rhY = pose.rightHip.y * canvasH
+
+      // Player torso AABB
+      const playerLeft = Math.min(lsX, lhX)
+      const playerRight = Math.max(rsX, rhX)
+      const playerTop = Math.min(lsY, rsY)
+      const playerBottom = Math.max(lhY, rhY)
+
+      // Circle-vs-AABB test using projected screen-space values
+      const cx = meteor.centerX
+      const cy = meteor.centerY
+      const r = meteor.screenRadius
+
+      // Closest point on AABB to circle center
+      const closestX = Math.max(playerLeft, Math.min(cx, playerRight))
+      const closestY = Math.max(playerTop, Math.min(cy, playerBottom))
+
+      const dx = cx - closestX
+      const dy = cy - closestY
+      const distSq = dx * dx + dy * dy
+
+      if (distSq <= r * r) {
+        score.registerFail()
+        meteor.result = 'fail'
+      } else {
+        score.registerSuccess(BASE_POINTS_SUCCESS)
+        meteor.result = 'success'
+      }
+      meteor.resolved = true
     }
   }
 }

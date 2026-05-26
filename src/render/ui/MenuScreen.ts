@@ -7,6 +7,7 @@ export class MenuScreen {
   private content: HTMLDivElement
   private currentState = ''
   private currentCalibrationStatus = ''
+  private currentLoadingMessage = ''
 
   constructor(root: HTMLElement) {
     this.root = root
@@ -25,11 +26,13 @@ export class MenuScreen {
   update(ctx: UIContext): void {
     const state = ctx.state
 
-    // Re-render when state changes, or when calibration status changes within Calibration state
+    // Re-render when state changes, or when calibration/loading message changes
     const calibrationChanged = state === 'Calibration' && ctx.calibrationStatus !== this.currentCalibrationStatus
-    if (state === this.currentState && !calibrationChanged) return
+    const loadingChanged = (state === 'Loading' || state === 'CameraPermission') && ctx.loadingMessage !== this.currentLoadingMessage
+    if (state === this.currentState && !calibrationChanged && !loadingChanged) return
     this.currentState = state
     this.currentCalibrationStatus = ctx.calibrationStatus
+    this.currentLoadingMessage = ctx.loadingMessage
 
     // Hide for states that don't need a menu
     if (state === 'Playing' || state === 'Countdown') {
@@ -67,11 +70,14 @@ export class MenuScreen {
   }
 
   private renderLoading(ctx: UIContext): void {
+    const hasError = ctx.cameraError || ctx.loadingMessage.includes('failed') || ctx.loadingMessage.includes('crashed')
+    const message = ctx.cameraError || ctx.loadingMessage || 'Requesting camera access...'
     this.content.innerHTML = `
       <h1 class="menu-title">Dodge Rush AR</h1>
-      <p class="menu-text ${ctx.cameraError ? 'text-error' : ''}">
-        ${ctx.cameraError || 'Requesting camera access...'}
+      <p class="menu-text ${hasError ? 'text-error' : ''}">
+        ${message}
       </p>
+      ${!hasError && ctx.loadingMessage ? '<div class="loading-spinner"></div>' : ''}
     `
   }
 

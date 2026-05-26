@@ -37,3 +37,34 @@ export const DIFFICULTY_INTERVAL_HARD = 0.9
 
 // Fairness: minimum seconds between dangerous obstacles (RedWall/HighLaser)
 export const FAIRNESS_DANGEROUS_GAP_SEC = 1.0
+
+// ── V2: AI Worker Configuration ──
+export const AI_WORKER_TARGET_INFERENCE_MS = 45
+export const AI_WORKER_FRAME_BUDGET_MS = 45
+
+// ── V2: Depth Occlusion ──
+export const DEPTH_OCCLUSION_THRESHOLD = 0.15
+export const DEPTH_OCCLUSION_SOFT_EDGE = 0.08
+
+// ── V2: Z-Axis Obstacle Movement ──
+export const VANISHING_POINT_FOCAL_LENGTH = 400
+export const OBSTACLE_SPAWN_Z = 1000       // Spawn depth in world units (large = far)
+export const OBSTACLE_Z_HIT_ZONE = 100     // World-Z below this = in hit zone for collision
+export const OBSTACLE_Z_DESPAWN = 120      // Keep obstacle alive slightly past camera so grace-window collision can resolve
+export const RED_WALL_SPAWN_SIDE_MIN = 0.18
+export const RED_WALL_SPAWN_SIDE_MAX = 0.42
+export const RED_WALL_SPAWN_Y_MIN = -0.32
+export const RED_WALL_SPAWN_Y_MAX = -0.08
+export const RED_WALL_CENTER_WIDTH_RATIO = 0.3
+export const RED_WALL_CENTER_X_JITTER = 0.06
+// BlueOrb still uses these (different coordinate model)
+export const BLUE_ORB_SPAWN_Z_MIN = 450
+export const BLUE_ORB_SPAWN_Z_MAX = 750
+export const BLUE_ORB_APPROACH_SPEED_FACTOR = 0.18
+
+// ── V2: Meteor ──
+export const METEOR_SPAWN_Z = 1200
+export const METEOR_HIT_ZONE_Z = 120
+export const METEOR_DESPAWN_Z = 50
+export const METEOR_SCREEN_RADIUS = 80
+export const METEOR_SPIN_SPEED = 1.5

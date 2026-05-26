@@ -1,4 +1,6 @@
 import * as THREE from 'three'
+import { DepthOcclusionPass } from './DepthOcclusionPass'
+import type { DepthMapData } from '../workers/AITypes'
 
 export class SceneManager {
   readonly scene: THREE.Scene
@@ -6,6 +8,7 @@ export class SceneManager {
   private renderer: THREE.WebGLRenderer
   private videoTexture: THREE.VideoTexture | null = null
   private videoPlane: THREE.Mesh | null = null
+  private occlusionPass: DepthOcclusionPass | null = null
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer
@@ -54,6 +57,28 @@ export class SceneManager {
     this.scene.add(this.videoPlane)
   }
 
+  enableOcclusion(): void {
+    if (this.occlusionPass) return
+    const w = window.innerWidth
+    const h = window.innerHeight
+    this.occlusionPass = new DepthOcclusionPass(w, h)
+  }
+
+  disableOcclusion(): void {
+    if (this.occlusionPass) {
+      this.occlusionPass.dispose()
+      this.occlusionPass = null
+    }
+  }
+
+  get hasOcclusion(): boolean {
+    return this.occlusionPass !== null
+  }
+
+  updateDepthMap(depthMap: DepthMapData): void {
+    this.occlusionPass?.updateDepthMap(depthMap)
+  }
+
   private createVideoGeometry(screenW: number, screenH: number, video: HTMLVideoElement): THREE.PlaneGeometry {
     const vw = video.videoWidth || 1280
     const vh = video.videoHeight || 720
@@ -87,12 +112,27 @@ export class SceneManager {
       this.videoPlane.geometry = this.createVideoGeometry(w, h, this.videoTexture.image as HTMLVideoElement)
       this.videoPlane.position.set(w / 2, -h / 2, -500)
     }
+
+    this.occlusionPass?.setSize(w, h)
   }
 
   render(): void {
     if (this.videoTexture) {
       this.videoTexture.needsUpdate = true
     }
-    this.renderer.render(this.scene, this.camera)
+
+    if (this.occlusionPass?.isEnabled) {
+      // Render scene to the occlusion pass's render target (captures depth)
+      const sceneRT = this.occlusionPass.depthRenderTarget
+      this.renderer.setRenderTarget(sceneRT)
+      this.renderer.render(this.scene, this.camera)
+      this.renderer.setRenderTarget(null)
+
+      // Run the occlusion compositing pass (outputs to screen)
+      this.occlusionPass.renderToScreen = true
+      this.occlusionPass.render(this.renderer, null as unknown as THREE.WebGLRenderTarget, sceneRT)
+    } else {
+      this.renderer.render(this.scene, this.camera)
+    }
   }
 }

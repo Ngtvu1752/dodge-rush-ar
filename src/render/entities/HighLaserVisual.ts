@@ -75,16 +75,19 @@ export class HighLaserVisual implements VisualAdapter {
     this.sparkVelocities[i3 + 2] = (Math.random() - 0.5) * 10
   }
 
-  sync(obstacle: Obstacle, canvasW: number, _canvasH: number): void {
+  sync(obstacle: Obstacle, _canvasW: number, _canvasH: number): void {
     const extra = obstacle as Obstacle & HighLaserExtra
     this.time += 0.016 // ~60fps
+
+    // Perspective ratio from projected width vs base width
+    const perspScale = obstacle.baseWidth > 0 ? obstacle.width / obstacle.baseWidth : 1
 
     // Update material opacity based on proximity
     if (extra.inHitZone) {
       this.beamMaterial.opacity = 0.7
       this.beamMaterial.emissiveIntensity = 2.0 + Math.sin(this.time * 8) * 0.5
       ;(this.sparksMesh.material as THREE.PointsMaterial).opacity = 0.8
-    } else if (obstacle.y + obstacle.height > 0) {
+    } else if (obstacle.width > 1) {
       this.beamMaterial.opacity = 0.4
       this.beamMaterial.emissiveIntensity = 1.5
       ;(this.sparksMesh.material as THREE.PointsMaterial).opacity = 0.4
@@ -94,10 +97,11 @@ export class HighLaserVisual implements VisualAdapter {
       ;(this.sparksMesh.material as THREE.PointsMaterial).opacity = 0.1
     }
 
-    // Position beam at center
-    const cx = canvasW / 2
+    // Position beam at center using entity's projected screen-space values
+    const cx = obstacle.x + obstacle.width / 2
     const cy = -(obstacle.y + obstacle.height / 2)
-    this.group.position.set(cx, cy, 0)
+    const cz = -obstacle.z
+    this.group.position.set(cx, cy, cz)
 
     // Update spark particles
     for (let i = 0; i < SPARK_COUNT; i++) {
@@ -117,15 +121,17 @@ export class HighLaserVisual implements VisualAdapter {
     }
     this.sparksGeometry.attributes.position.needsUpdate = true
 
-    // Spawn animation
+    // Spawn animation — target is perspScale
     if (!this.spawnPlayed) {
       this.spawnPlayed = true
-      this.group.scale.set(1, 0.1, 0.1)
+      this.group.scale.set(perspScale, 0.1, 0.1)
       gsap.to(this.group.scale, {
-        y: 1, z: 1,
+        y: perspScale, z: perspScale,
         duration: 0.3,
         ease: 'back.out(1.5)',
       })
+    } else {
+      this.group.scale.set(perspScale, perspScale, perspScale)
     }
 
     // Hit zone entry

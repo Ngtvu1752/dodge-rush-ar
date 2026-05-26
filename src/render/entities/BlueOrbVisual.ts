@@ -53,10 +53,14 @@ export class BlueOrbVisual implements VisualAdapter {
   sync(obstacle: Obstacle, _canvasW: number, _canvasH: number): void {
     this.localTime += 0.016
 
-    // Position: BlueOrb x,y are CENTER coordinates
-    const cx = obstacle.x
-    const cy = -(obstacle.y) // negate for Three.js Y-down
-    this.group.position.set(cx, cy, 0)
+    // Match the shared world-Z projection used by the other V2 obstacles.
+    const perspScale = obstacle.baseWidth > 0 ? obstacle.width / obstacle.baseWidth : 1
+
+    // Position by projected screen center.
+    const cx = obstacle.x + obstacle.width / 2
+    const cy = -(obstacle.y + obstacle.height / 2)
+    const cz = -obstacle.z
+    this.group.position.set(cx, cy, cz)
 
     // Float/bob animation
     this.sphereMesh.position.y = Math.sin(this.localTime * 3) * 6
@@ -83,15 +87,18 @@ export class BlueOrbVisual implements VisualAdapter {
     this.sphereMaterial.emissive = new THREE.Color(0x1144aa)
     this.sphereMaterial.emissiveIntensity = 0.3 + lifetimeRatio * 0.5
 
-    // Spawn animation
+    // Spawn animation — target is zScale, not 1
     if (!this.spawnPlayed) {
       this.spawnPlayed = true
       this.group.scale.set(0.1, 0.1, 0.1)
       gsap.to(this.group.scale, {
-        x: 1, y: 1, z: 1,
+        x: perspScale, y: perspScale, z: perspScale,
         duration: 0.35,
         ease: 'back.out(2)',
       })
+    } else {
+      // Continuously update scale based on z-depth
+      this.group.scale.set(perspScale, perspScale, perspScale)
     }
 
     // Result animations (trigger once)

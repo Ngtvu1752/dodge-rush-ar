@@ -52,35 +52,41 @@ export class RedWallVisual implements VisualAdapter {
   sync(obstacle: Obstacle, _canvasW: number, _canvasH: number): void {
     const extra = obstacle as Obstacle & RedWallExtra
 
+    // Perspective ratio from projected width vs base width
+    const perspScale = obstacle.baseWidth > 0 ? obstacle.width / obstacle.baseWidth : 1
+
     // Update material based on proximity state
     if (extra.inHitZone) {
       this.wallMaterial.opacity = 0.5
       this.wallMaterial.color.set(0xff2244)
-    } else if (obstacle.y + obstacle.height > 0) {
-      // Approaching — visible but not in hit zone
+    } else if (obstacle.width > 1) {
       this.wallMaterial.opacity = 0.25
     } else {
-      // Off-screen above
       this.wallMaterial.opacity = 0.15
     }
 
-    // Position: map Canvas2D (x, y, w, h) to Three.js center coordinates
+    // Position the group in screen space, then scale the local mesh for perspective.
+    // Keeping position on the group avoids scaling the screen coordinates toward the origin.
     const cx = obstacle.x + obstacle.width / 2
     const cy = -(obstacle.y + obstacle.height / 2)
-    this.wallMesh.position.set(cx, cy, 0)
+    const cz = -obstacle.z
+    this.group.position.set(cx, cy, cz)
+    this.wallMesh.position.set(0, 0, 0)
 
     // Shadow slightly behind and below
-    this.shadowMesh.position.set(cx, cy + 8, -5)
+    this.shadowMesh.position.set(0, 8 * perspScale, -5)
 
-    // Spawn bounce animation (once)
+    // Spawn bounce animation (once) — target is perspScale
     if (!this.spawnPlayed) {
       this.spawnPlayed = true
       this.group.scale.set(0.1, 0.1, 0.1)
       gsap.to(this.group.scale, {
-        x: 1, y: 1, z: 1,
+        x: perspScale, y: perspScale, z: perspScale,
         duration: 0.4,
         ease: 'back.out(1.7)',
       })
+    } else {
+      this.group.scale.set(perspScale, perspScale, perspScale)
     }
 
     // Hit zone entry animation
