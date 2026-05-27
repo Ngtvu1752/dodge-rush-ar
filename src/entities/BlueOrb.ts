@@ -4,6 +4,7 @@ import {
   BLUE_ORB_APPROACH_SPEED_FACTOR,
   BLUE_ORB_SPAWN_Z_MAX,
   BLUE_ORB_SPAWN_Z_MIN,
+  HAND_INTERACTION_PLANE_Z,
   ORB_LIFETIME_SEC,
   VANISHING_POINT_FOCAL_LENGTH,
 } from '../config/gameConfig'
@@ -34,6 +35,8 @@ export class BlueOrb implements Obstacle {
   readonly radius: number
   graceStart = 0
   result: 'success' | 'fail' | null = null
+  interactionState: 'free' | 'candidate' | 'grabbed' | 'thrown' | 'consumed' = 'free'
+  grabbedBy: 'left' | 'right' | null = null
 
   worldX = 0
   worldY = 0
@@ -72,6 +75,10 @@ export class BlueOrb implements Obstacle {
   }
 
   update(dt: number): void {
+    if (this.interactionState === 'grabbed' || this.interactionState === 'consumed') {
+      return
+    }
+
     this.age += dt
     if (this.age >= this.lifetime) {
       this.active = false
@@ -80,6 +87,46 @@ export class BlueOrb implements Obstacle {
 
     this.worldZ -= this.speed * BLUE_ORB_APPROACH_SPEED_FACTOR * dt
     this.project(window.innerWidth, window.innerHeight)
+  }
+
+  setCandidate(candidate: boolean): void {
+    if (this.interactionState === 'free' || this.interactionState === 'candidate') {
+      this.interactionState = candidate ? 'candidate' : 'free'
+    }
+  }
+
+  attachToHand(
+    handedness: 'left' | 'right',
+    screenX: number,
+    screenY: number,
+    viewportWidth: number,
+    viewportHeight: number,
+  ): void {
+    this.grabbedBy = handedness
+    this.interactionState = 'grabbed'
+    this.followHand(screenX, screenY, viewportWidth, viewportHeight)
+  }
+
+  followHand(screenX: number, screenY: number, viewportWidth: number, viewportHeight: number): void {
+    this.worldZ = HAND_INTERACTION_PLANE_Z
+    const scale = VANISHING_POINT_FOCAL_LENGTH / (VANISHING_POINT_FOCAL_LENGTH + this.worldZ)
+    const cx = viewportWidth / 2
+    const cy = viewportHeight / 2
+    this.worldX = (screenX - cx) / scale
+    this.worldY = (screenY - cy) / scale
+    this.project(viewportWidth, viewportHeight)
+  }
+
+  releaseToThrow(): void {
+    this.interactionState = 'thrown'
+    this.grabbedBy = null
+    this.active = false
+  }
+
+  consume(): void {
+    this.interactionState = 'consumed'
+    this.grabbedBy = null
+    this.active = false
   }
 
   private project(canvasWidth: number, canvasHeight: number): void {

@@ -1,3 +1,4 @@
+import type * as vision from '@mediapipe/tasks-vision'
 import type { DepthMapData } from '../AITypes'
 
 const SEGMENTATION_WIDTH = 256
@@ -16,17 +17,13 @@ export class DepthModel {
   private _error = ''
   private depthBuffer = new Float32Array(SEGMENTATION_WIDTH * SEGMENTATION_HEIGHT)
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async init(getVision: () => Promise<any>): Promise<boolean> {
+  async init(
+    visionModule: typeof vision,
+    fileset: Awaited<ReturnType<typeof visionModule.FilesetResolver.forVisionTasks>>,
+  ): Promise<boolean> {
     try {
       console.info('[Worker] Loading DepthModel (ImageSegmenter)...')
-      const vision = await getVision()
-      const { FilesetResolver, ImageSegmenter } = vision
-
-      const fileset = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm',
-        true,
-      )
+      const { ImageSegmenter } = visionModule
 
       const modelPath =
         'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite'

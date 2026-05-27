@@ -1,6 +1,5 @@
 import type { PoseData } from '../pose/PoseTypes'
 import type { CalibrationData } from './Calibration'
-import { GESTURE_HOLD_MS } from '../config/gameConfig'
 
 export type PlayerAction = {
   dodgeLeft: boolean
@@ -20,32 +19,13 @@ const EMPTY_ACTION: PlayerAction = {
   shield: false,
 }
 
-type GestureKey = keyof PlayerAction
-
 export class GestureDetector {
-  private activeGesture: GestureKey | null = null
-  private gestureSince = 0
-
   detect(pose: PoseData, calibration: CalibrationData, timestamp: number): PlayerAction {
+    void timestamp
     if (!pose.detected) {
-      this.clearIfExpired(timestamp)
-      return this.current()
+      return EMPTY_ACTION
     }
-
-    const raw = this.computeRaw(pose, calibration)
-
-    for (const key of Object.keys(raw) as GestureKey[]) {
-      if (raw[key]) {
-        if (this.activeGesture !== key) {
-          this.activeGesture = key
-          this.gestureSince = timestamp
-        }
-        return this.current()
-      }
-    }
-
-    this.clearIfExpired(timestamp)
-    return this.current()
+    return this.computeRaw(pose, calibration)
   }
 
   private computeRaw(pose: PoseData, cal: CalibrationData): PlayerAction {
@@ -83,16 +63,5 @@ export class GestureDetector {
       pose.rightWrist.x > pose.rightShoulder.x + spread
 
     return { dodgeLeft, dodgeRight, squat, leftHandActive, rightHandActive, shield }
-  }
-
-  private clearIfExpired(timestamp: number): void {
-    if (this.activeGesture && timestamp - this.gestureSince >= GESTURE_HOLD_MS) {
-      this.activeGesture = null
-    }
-  }
-
-  private current(): PlayerAction {
-    if (!this.activeGesture) return EMPTY_ACTION
-    return { ...EMPTY_ACTION, [this.activeGesture]: true }
   }
 }

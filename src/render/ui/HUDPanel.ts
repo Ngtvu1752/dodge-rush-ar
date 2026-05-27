@@ -7,6 +7,8 @@ export class HUDPanel {
   private comboEl: HTMLDivElement
   private levelEl: HTMLDivElement
   private timerEl: HTMLDivElement
+  private handEl: HTMLDivElement
+  private grabEl: HTMLDivElement
   private prevScore = -1
   private prevCombo = -1
 
@@ -20,6 +22,8 @@ export class HUDPanel {
       <div class="hud-score" id="hud-score">0</div>
       <div class="hud-combo" id="hud-combo">Combo: 0  x1.0</div>
       <div class="hud-level" id="hud-level">Easy</div>
+      <div class="hud-level" id="hud-hand">Hands: SEARCHING</div>
+      <div class="hud-level" id="hud-grab">No grab</div>
     `
     this.root.appendChild(rightPanel)
 
@@ -33,6 +37,8 @@ export class HUDPanel {
     this.comboEl = rightPanel.querySelector('#hud-combo')!
     this.levelEl = rightPanel.querySelector('#hud-level')!
     this.timerEl = leftPanel.querySelector('#hud-timer')!
+    this.handEl = rightPanel.querySelector('#hud-hand')!
+    this.grabEl = rightPanel.querySelector('#hud-grab')!
   }
 
   update(ctx: UIContext): void {
@@ -62,6 +68,9 @@ export class HUDPanel {
 
     this.levelEl.textContent = ctx.difficulty
     this.timerEl.textContent = `${Math.ceil(ctx.remaining)}s`
+    this.handEl.textContent = `Hands: ${ctx.handTrackingStatus}  ${ctx.throwReady ? 'THROW READY' : ctx.pinchStatus}`
+    this.handEl.style.color = ctx.throwReady ? '#88ddff' : '#cfd8ff'
+    this.grabEl.textContent = ctx.grabStatus
   }
 
   show(): void {

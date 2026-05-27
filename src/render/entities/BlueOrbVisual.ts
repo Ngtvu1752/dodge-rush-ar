@@ -52,6 +52,7 @@ export class BlueOrbVisual implements VisualAdapter {
 
   sync(obstacle: Obstacle, _canvasW: number, _canvasH: number): void {
     this.localTime += 0.016
+    const orb = obstacle as Obstacle & { interactionState?: string }
 
     // Match the shared world-Z projection used by the other V2 obstacles.
     const perspScale = obstacle.baseWidth > 0 ? obstacle.width / obstacle.baseWidth : 1
@@ -77,6 +78,15 @@ export class BlueOrbVisual implements VisualAdapter {
 
     this.sphereMaterial.opacity = fadeAlpha
     this.ringMaterial.opacity = 0.4 * fadeAlpha
+    if (orb.interactionState === 'candidate') {
+      this.ringMaterial.opacity = Math.max(this.ringMaterial.opacity, 0.75)
+      this.ringMaterial.color.set(0xbde7ff)
+    } else if (orb.interactionState === 'grabbed') {
+      this.ringMaterial.opacity = 0.85
+      this.ringMaterial.color.set(0xffffff)
+    } else {
+      this.ringMaterial.color.set(0x4488ff)
+    }
 
     // Ring pulses faster as lifetime decreases
     const pulseSpeed = 3 + lifetimeRatio * 8

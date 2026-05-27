@@ -21,6 +21,10 @@ export type UIContext = {
   cameraError: string
   loadingMessage: string
   debug: boolean
+  handTrackingStatus: string
+  pinchStatus: string
+  grabStatus: string
+  throwReady: boolean
 }
 
 type FeedbackEntry = {

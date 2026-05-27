@@ -3,6 +3,26 @@ import type { PoseData } from '../pose/PoseTypes'
 // ── Model types (ordered by priority: lower number = higher priority) ──
 export type ModelType = 'pose' | 'hands' | 'depth'
 
+// ── Hand tracking data (transferred from worker) ──
+export interface HandLandmark {
+  x: number
+  y: number
+  z: number
+  visibility?: number
+}
+
+export interface SingleHand {
+  landmarks: HandLandmark[]
+  handedness: 'Left' | 'Right'
+  confidence: number
+}
+
+export interface HandData {
+  left: SingleHand | null
+  right: SingleHand | null
+  timestamp: number
+}
+
 // ── Depth map data (transferred from worker) ──
 export interface DepthMapData {
   buffer: Float32Array
@@ -34,6 +54,7 @@ export interface AIFrameResult {
   type: 'result'
   timestamp: number
   pose: PoseData | null
+  hands: HandData | null
   depthMap: DepthMapData | null
   inferenceMs: Record<ModelType, number>
   modelsRan: ModelType[]

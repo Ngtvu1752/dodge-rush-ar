@@ -9,6 +9,7 @@ import { PoseSmoother } from './pose/PoseSmoother'
 import { DebugSkeleton } from './render/DebugSkeleton'
 import { Calibration } from './input/Calibration'
 import { GestureDetector } from './input/GestureDetector'
+import { HandTracker } from './input/HandTracker'
 import { GameManager } from './game/GameManager'
 import { GameState } from './game/GameState'
 import { type UIContext } from './render/UIOverlay'
@@ -17,9 +18,12 @@ import { ObstacleVisualManager } from './render/entities/ObstacleVisualManager'
 import { ParticleEmitter } from './render/vfx/ParticleEmitter'
 import { ScreenShake } from './render/vfx/ScreenShake'
 import { FeedbackPopup } from './render/vfx/FeedbackPopup'
+import { GrabIndicator } from './render/vfx/GrabIndicator'
 import { BASE_POINTS_SUCCESS, MAX_HEALTH } from './config/gameConfig'
 import type { ModelType } from './workers/AITypes'
 import { DebugDepthMap } from './render/DebugDepthMap'
+import { ObstacleType } from './entities/Obstacle'
+import type { BlueOrb } from './entities/BlueOrb'
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!
 const entityCanvas = document.querySelector<HTMLCanvasElement>('#entity-canvas')!
@@ -40,13 +44,24 @@ const poseSmoother = new PoseSmoother()
 const debugSkeleton = new DebugSkeleton()
 const calibration = new Calibration()
 const gestureDetector = new GestureDetector()
+const handTracker = new HandTracker()
 const game = new GameManager()
 const debugDepthMap = new DebugDepthMap()
+const grabIndicator = new GrabIndicator(sceneManager.scene)
 
 let debugMode = false
 let lastTimestamp = 0
 let loadingMessage = ''
 let loadingError = ''
+
+function clampFeedbackPosition(x: number, y: number): { x: number; y: number } {
+  const marginX = 120
+  const marginY = 90
+  return {
+    x: Math.max(marginX, Math.min(window.innerWidth - marginX, x)),
+    y: Math.max(marginY, Math.min(window.innerHeight - marginY, y)),
+  }
+}
 
 // V2 model toggle state
 const modelEnabled: Record<ModelType, boolean> = {
@@ -160,6 +175,8 @@ window.addEventListener('keydown', (e) => {
 
 function buildUIContext(): UIContext {
   const s = game.score
+  const hands = handTracker.states
+  const activeGrab = game.getObstacles().find((o) => o.type === ObstacleType.BlueOrb && (o as BlueOrb).interactionState === 'grabbed') as BlueOrb | undefined
   return {
     state: game.getState(),
     score: s.score,
@@ -179,6 +196,10 @@ function buildUIContext(): UIContext {
     cameraError: camera.errorMessage ?? '',
     loadingMessage: loadingError || loadingMessage,
     debug: debugMode,
+    handTrackingStatus: hands.some((hand) => hand.present) ? 'TRACKING' : 'SEARCHING',
+    pinchStatus: `L:${handTracker.left.phase} R:${handTracker.right.phase}`,
+    grabStatus: activeGrab ? `Grabbed by ${activeGrab.grabbedBy}` : 'No grab',
+    throwReady: handTracker.left.canThrow || handTracker.right.canThrow,
   }
 }
 
@@ -201,6 +222,8 @@ function gameLoop(timestamp: number) {
   // Read the latest completed inference result
   const raw = poseTracker.readLatest(timestamp)
   const pose = poseSmoother.smooth(raw)
+  const hands = aiWorkerManager.lastHands
+  handTracker.update(hands, timestamp, renderer.width, renderer.height)
 
   // Draw depth map debug overlay (reads from worker results)
   const depthMap = aiWorkerManager.lastDepthMap
@@ -210,7 +233,7 @@ function gameLoop(timestamp: number) {
   }
 
   if (debugMode) {
-    debugSkeleton.draw(renderer, pose)
+    debugSkeleton.draw(renderer, pose, hands, handTracker.states)
   }
 
   const state = game.getState()
@@ -224,32 +247,39 @@ function gameLoop(timestamp: number) {
 
   // Playing state: render obstacles and evaluate collisions
   if (state === GameState.Playing) {
-    const obstacles = game.getObstacles()
-
-    // Sync Three.js visuals (creates/disposes adapters as needed)
-    obstacleVisualManager.sync(obstacles, renderer.width, renderer.height)
-
-    // Canvas2D fallback for obstacles without Three.js visuals
-    for (const o of obstacles) {
-      if (!obstacleVisualManager.hasVisual(o.id)) {
-        o.render(renderer)
-      }
-    }
-
     const cal = calibration.data
     if (cal) {
       const action = gestureDetector.detect(pose, cal, timestamp)
       game.evaluateCollisions(action, pose, timestamp)
+      game.updateHandInteractions(handTracker, renderer.width, renderer.height)
+
+      const obstacles = [...game.getObstacles(), ...game.getThrownOrbs()]
+      obstacleVisualManager.sync(obstacles, renderer.width, renderer.height)
+
+      for (const o of obstacles) {
+        if (!obstacleVisualManager.hasVisual(o.id)) {
+          o.render(renderer)
+        }
+      }
+
+      const candidateOrb = game.getObstacles().find(
+        (o) => o.type === ObstacleType.BlueOrb && (o as BlueOrb).interactionState === 'candidate',
+      ) as BlueOrb | undefined
+      grabIndicator.sync(candidateOrb ?? null, dt)
 
       // Show feedback based on obstacle results
-      for (const o of game.getObstacles()) {
+      for (const o of [...game.getObstacles(), ...game.getThrownOrbs()]) {
         if (o.resolved && o.result) {
-          const screenX = o.x + o.width / 2
-          const screenY = o.y + o.height / 2
+          const rawX = o.x + o.width / 2
+          const rawY = o.y + o.height / 2
+          const { x: screenX, y: screenY } = clampFeedbackPosition(rawX, rawY)
 
           if (o.result === 'success') {
             if (o.type === 'BlueOrb') {
               feedbackPopup.show('TOUCHED!', '#00ff88', screenX, screenY)
+              particleEmitter.burst(screenX, screenY, 'sparkle')
+            } else if (o.type === ObstacleType.ThrownOrb) {
+              feedbackPopup.show('BULLSEYE!', '#66ccff', screenX, screenY)
               particleEmitter.burst(screenX, screenY, 'sparkle')
             } else if (o.type === 'HighLaser') {
               feedbackPopup.show('SQUAT OK', '#00ff88', screenX, screenY)
@@ -283,8 +313,9 @@ function gameLoop(timestamp: number) {
           `offset=${offset.toFixed(3)}  drop=${drop.toFixed(3)}`,
           `dodgeL=${action.dodgeLeft}  dodgeR=${action.dodgeRight}`,
           `squat=${action.squat}`,
-          `Lhand=${action.leftHandActive}  Rhand=${action.rightHandActive}`,
-          `shield=${action.shield}`,
+          `poseHands=${action.leftHandActive}/${action.rightHandActive} shield=${action.shield}`,
+          `L:${handTracker.left.phase} ${handTracker.left.speed.toFixed(0)}px/s  R:${handTracker.right.phase} ${handTracker.right.speed.toFixed(0)}px/s`,
+          `grab=${game.getObstacles().some((o) => o.type === ObstacleType.BlueOrb && (o as BlueOrb).interactionState === 'grabbed')} throwReady=${handTracker.left.canThrow || handTracker.right.canThrow}`,
         ]
         lines.forEach((line, i) => {
           renderer.drawText(line, 10, 40 + i * 18, {
@@ -313,7 +344,19 @@ function gameLoop(timestamp: number) {
           })
         })
       }
+    } else {
+      const obstacles = [...game.getObstacles(), ...game.getThrownOrbs()]
+      obstacleVisualManager.sync(obstacles, renderer.width, renderer.height)
+      for (const o of obstacles) {
+        if (!obstacleVisualManager.hasVisual(o.id)) {
+          o.render(renderer)
+        }
+      }
+      grabIndicator.sync(null, dt)
     }
+  }
+  if (state !== GameState.Playing) {
+    grabIndicator.sync(null, dt)
   }
 
   // Update VFX systems

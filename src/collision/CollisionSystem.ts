@@ -3,10 +3,20 @@ import type { RedWallCenter, RedWallLeft, RedWallRight } from '../entities/RedWa
 import type { HighLaser } from '../entities/HighLaser'
 import type { BlueOrb } from '../entities/BlueOrb'
 import type { Meteor } from '../entities/Meteor'
+import type { ThrownOrb } from '../entities/ThrownOrb'
 import type { PlayerAction } from '../input/GestureDetector'
 import type { ScoreManager } from '../game/ScoreManager'
 import type { PoseData } from '../pose/PoseTypes'
-import { OBSTACLE_GRACE_WINDOW_MS, BASE_POINTS_SUCCESS, BASE_POINTS_ORB, ORB_TOUCH_MARGIN, RED_WALL_FORGIVENESS_MARGIN, OBSTACLE_Z_HIT_ZONE, METEOR_HIT_ZONE_Z } from '../config/gameConfig'
+import {
+  OBSTACLE_GRACE_WINDOW_MS,
+  BASE_POINTS_SUCCESS,
+  BASE_POINTS_ORB,
+  ORB_TOUCH_MARGIN,
+  RED_WALL_FORGIVENESS_MARGIN,
+  OBSTACLE_Z_HIT_ZONE,
+  METEOR_HIT_ZONE_Z,
+  THROWN_ORB_BONUS_POINTS,
+} from '../config/gameConfig'
 
 type RedWall = RedWallLeft | RedWallRight | RedWallCenter
 
@@ -136,6 +146,10 @@ export class CollisionSystem {
   }
 
   private evaluateBlueOrb(orb: BlueOrb, pose: PoseData, score: ScoreManager): void {
+    if (orb.interactionState === 'grabbed' || orb.interactionState === 'thrown' || orb.interactionState === 'consumed') {
+      return
+    }
+
     // If orb expired (went off-screen), count as miss
     if (!orb.active && !orb.resolved) {
       score.registerMiss()
@@ -179,6 +193,7 @@ export class CollisionSystem {
       score.registerSuccess(BASE_POINTS_ORB)
       orb.result = 'success'
       orb.resolved = true
+      orb.consume()
     }
   }
 
@@ -237,6 +252,78 @@ export class CollisionSystem {
         meteor.result = 'success'
       }
       meteor.resolved = true
+    }
+  }
+
+  evaluateThrownOrbHits(thrownOrbs: readonly ThrownOrb[], obstacles: readonly Obstacle[], score: ScoreManager): void {
+    for (const orb of thrownOrbs) {
+      if (orb.resolved) continue
+
+      for (const obstacle of obstacles) {
+        if (obstacle.resolved || !obstacle.active) continue
+
+        if (
+          obstacle.type !== 'RedWallLeft' &&
+          obstacle.type !== 'RedWallRight' &&
+          obstacle.type !== 'RedWallCenter' &&
+          obstacle.type !== 'Meteor'
+        ) {
+          continue
+        }
+
+        const left = obstacle.x
+        const right = obstacle.x + obstacle.width
+        const top = obstacle.y
+        const bottom = obstacle.y + obstacle.height
+
+        const closestX = Math.max(left, Math.min(orb.centerX, right))
+        const closestY = Math.max(top, Math.min(orb.centerY, bottom))
+        const dx = orb.centerX - closestX
+        const dy = orb.centerY - closestY
+        const hit = dx * dx + dy * dy <= orb.screenRadius * orb.screenRadius
+
+        if (!hit) continue
+
+        obstacle.resolved = true
+        obstacle.result = 'success'
+        obstacle.active = false
+        orb.hitTargetId = obstacle.id
+        orb.result = 'success'
+        orb.resolved = true
+        orb.active = false
+        score.registerSuccess(THROWN_ORB_BONUS_POINTS)
+        break
+      }
+    }
+  }
+
+  evaluateThrownOrbVsLaser(thrownOrbs: readonly ThrownOrb[], obstacles: readonly Obstacle[]): void {
+    for (const orb of thrownOrbs) {
+      if (orb.resolved) continue
+
+      for (const obstacle of obstacles) {
+        if (obstacle.type !== 'HighLaser' || obstacle.resolved || !obstacle.active) continue
+
+        const left = obstacle.x
+        const right = obstacle.x + obstacle.width
+        const top = obstacle.y
+        const bottom = obstacle.y + obstacle.height
+        const overlap =
+          orb.centerX + orb.screenRadius >= left &&
+          orb.centerX - orb.screenRadius <= right &&
+          orb.centerY + orb.screenRadius >= top &&
+          orb.centerY - orb.screenRadius <= bottom
+
+        if (!overlap) continue
+
+        obstacle.resolved = true
+        obstacle.result = 'success'
+        obstacle.active = false
+        orb.result = 'success'
+        orb.resolved = true
+        orb.active = false
+        break
+      }
     }
   }
 }

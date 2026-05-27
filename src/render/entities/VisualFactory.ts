@@ -4,6 +4,7 @@ import { RedWallVisual } from './RedWallVisual'
 import { HighLaserVisual } from './HighLaserVisual'
 import { BlueOrbVisual } from './BlueOrbVisual'
 import { MeteorVisual } from './MeteorVisual'
+import { ThrownOrbVisual } from './ThrownOrbVisual'
 
 export function createVisual(obstacle: Obstacle): VisualAdapter | null {
   switch (obstacle.type) {
@@ -15,6 +16,8 @@ export function createVisual(obstacle: Obstacle): VisualAdapter | null {
       return new HighLaserVisual(obstacle.baseWidth)
     case ObstacleType.BlueOrb:
       return new BlueOrbVisual()
+    case ObstacleType.ThrownOrb:
+      return new ThrownOrbVisual()
     case ObstacleType.Meteor:
       return new MeteorVisual()
     default:

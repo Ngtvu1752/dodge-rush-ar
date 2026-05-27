@@ -9,11 +9,15 @@ import type {
   ModelType,
   AISetModelsCommand,
   DepthMapData,
+  HandData,
 } from './AITypes'
 import { InferenceScheduler } from './InferenceScheduler'
 import { DepthModel } from './models/DepthModel'
+import { HandModel } from './models/HandModel'
 
 const WASM_URL = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm'
+type VisionFileset = Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>
+type ModuleFactoryLike = unknown
 
 async function getVisionModule(): Promise<typeof vision> {
   return vision
@@ -40,6 +44,9 @@ const LM = {
 let landmarker: any = null
 const scheduler = new InferenceScheduler()
 const depthModel = new DepthModel()
+const handModel = new HandModel()
+let visionFilesetPromise: Promise<VisionFileset> | null = null
+let cachedVisionModuleFactory: ModuleFactoryLike | null = null
 
 // Reusable OffscreenCanvas to avoid per-frame allocation
 let reusableCanvas: OffscreenCanvas | null = null
@@ -51,6 +58,38 @@ function ensureCanvas(width: number, height: number): OffscreenCanvasRenderingCo
     reusableCtx = reusableCanvas.getContext('2d') as OffscreenCanvasRenderingContext2D
   }
   return reusableCtx!
+}
+
+function getVisionFileset(): Promise<VisionFileset> {
+  if (!visionFilesetPromise) {
+    console.info('[Worker] Loading WASM fileset (ESM)...')
+    visionFilesetPromise = FilesetResolver.forVisionTasks(WASM_URL, true).then((fileset) => {
+      console.info('[Worker] WASM fileset loaded.')
+      return fileset
+    })
+  }
+
+  return visionFilesetPromise
+}
+
+async function ensureVisionModuleFactory(fileset: VisionFileset): Promise<void> {
+  if (!fileset.wasmLoaderPath.includes('_module')) {
+    return
+  }
+
+  if (!cachedVisionModuleFactory) {
+    const loaderModule = await import(/* @vite-ignore */ fileset.wasmLoaderPath)
+    cachedVisionModuleFactory =
+      loaderModule.default ??
+      (globalThis as { ModuleFactory?: ModuleFactoryLike }).ModuleFactory ??
+      null
+  }
+
+  if (!cachedVisionModuleFactory) {
+    throw new Error(`Failed to cache MediaPipe ModuleFactory from ${fileset.wasmLoaderPath}`)
+  }
+
+  ;(globalThis as { ModuleFactory?: ModuleFactoryLike }).ModuleFactory = cachedVisionModuleFactory
 }
 
 function toPoint(lm: { x: number; y: number; z: number; visibility?: number }[], idx: number): Point {
@@ -92,9 +131,8 @@ function mapResults(
 }
 
 async function initPoseLandmarker(): Promise<void> {
-  console.info('[Worker] Loading WASM fileset (ESM)...')
-  const fileset = await FilesetResolver.forVisionTasks(WASM_URL, true)
-  console.info('[Worker] WASM fileset loaded.')
+  const fileset = await getVisionFileset()
+  await ensureVisionModuleFactory(fileset)
 
   const modelPath =
     'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task'
@@ -146,10 +184,11 @@ function runPoseInference(
 }
 
 function runHandsInference(
-  _ctx: OffscreenCanvasRenderingContext2D,
-  _timestamp: number,
-): { ms: number } {
-  return { ms: 0 }
+  ctx: OffscreenCanvasRenderingContext2D,
+  timestamp: number,
+): { hands: HandData | null; ms: number } {
+  if (!handModel.ready) return { hands: null, ms: 0 }
+  return handModel.estimate(ctx, timestamp)
 }
 
 function runDepthInference(
@@ -179,6 +218,7 @@ function processFrame(data: AIFrameRequest): void {
 
   const inferenceMs: Record<ModelType, number> = { pose: 0, hands: 0, depth: 0 }
   let pose: PoseData | null = null
+  let hands: HandData | null = null
   let depthMap: DepthMapData | null = null
 
   for (const model of batch) {
@@ -188,6 +228,7 @@ function processFrame(data: AIFrameRequest): void {
       inferenceMs.pose = result.ms
     } else if (model === 'hands') {
       const result = runHandsInference(ctx, timestamp)
+      hands = result.hands
       inferenceMs.hands = result.ms
     } else if (model === 'depth') {
       const result = runDepthInference(ctx, timestamp)
@@ -202,6 +243,7 @@ function processFrame(data: AIFrameRequest): void {
     type: 'result',
     timestamp,
     pose,
+    hands,
     depthMap,
     inferenceMs,
     modelsRan: batch,
@@ -216,8 +258,25 @@ function processFrame(data: AIFrameRequest): void {
 // ── Lazy model loading ──
 
 async function ensureModelLoaded(model: ModelType): Promise<void> {
+  if (model === 'hands' && !handModel.ready) {
+    const visionModule = await getVisionModule()
+    const fileset = await getVisionFileset()
+    await ensureVisionModuleFactory(fileset)
+    const ok = await handModel.init(visionModule, fileset)
+    if (!ok) {
+      scheduler.setModelEnabled('hands', false)
+      const msg: AIWorkerOutMessage = {
+        type: 'error',
+        error: `Hand model failed to load: ${handModel.error}`,
+      }
+      self.postMessage(msg)
+    }
+  }
   if (model === 'depth' && !depthModel.ready) {
-    await depthModel.init(getVisionModule)
+    const visionModule = await getVisionModule()
+    const fileset = await getVisionFileset()
+    await ensureVisionModuleFactory(fileset)
+    await depthModel.init(visionModule, fileset)
   }
 }
 
@@ -264,6 +323,7 @@ self.onmessage = async (e: MessageEvent<AICommand | AIFrameRequest>) => {
   if (data.type === 'destroy') {
     landmarker?.close()
     landmarker = null
+    handModel.close()
     depthModel.close()
   }
 }

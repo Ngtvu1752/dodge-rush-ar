@@ -10,9 +10,10 @@ const MODEL_PRIORITY: Record<ModelType, number> = {
 // ── Minimum interval between runs for non-priority-1 models ──
 const MODEL_INTERVAL_MS: Record<ModelType, number> = {
   pose: 0,      // Always run
-  hands: 40,    // ~25 FPS max
+  hands: 20,    // ~50 FPS max
   depth: 66,    // ~15 FPS max
 }
+const DEPTH_INTERVAL_HANDS_ACTIVE_MS = 110
 
 // ── Budget: if last cycle exceeded this, skip lowest-priority model ──
 const INFERENCE_BUDGET_MS = 45
@@ -63,20 +64,24 @@ export class InferenceScheduler {
   /** Returns ordered list of models to run this cycle. */
   getNextBatch(timestamp: number): ModelType[] {
     const batch: ModelType[] = []
+    const handsEnabled = this.models.hands.enabled
 
     // Get all enabled models sorted by priority (pose first)
     const enabled = (Object.keys(this.models) as ModelType[])
       .filter((m) => this.models[m].enabled)
       .sort((a, b) => this.models[a].priority - this.models[b].priority)
 
-    // Budget-aware: if last cycle exceeded budget, drop the lowest-priority model
+    // Budget-aware: if last cycle exceeded budget, depth yields first while hands are active.
     let candidates = enabled
     if (this.budgetExceeded && enabled.length > 1) {
-      candidates = enabled.slice(0, -1)
+      candidates = handsEnabled
+        ? enabled.filter((model) => model !== 'depth')
+        : enabled.slice(0, -1)
     }
 
     for (const model of candidates) {
       const state = this.models[model]
+      const intervalMs = this.getIntervalMs(model)
 
       // Priority 1 (pose) always runs
       if (state.priority === 1) {
@@ -85,7 +90,7 @@ export class InferenceScheduler {
       }
 
       // Other models respect their interval
-      if (timestamp - state.lastRunTime >= state.intervalMs) {
+      if (timestamp - state.lastRunTime >= intervalMs) {
         batch.push(model)
       }
     }
@@ -134,5 +139,13 @@ export class InferenceScheduler {
   get enabledModels(): ModelType[] {
     return (Object.keys(this.models) as ModelType[])
       .filter((m) => this.models[m].enabled)
+  }
+
+  private getIntervalMs(model: ModelType): number {
+    if (model === 'depth' && this.models.hands.enabled) {
+      return DEPTH_INTERVAL_HANDS_ACTIVE_MS
+    }
+
+    return this.models[model].intervalMs
   }
 }

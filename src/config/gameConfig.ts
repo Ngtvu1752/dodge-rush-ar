@@ -41,6 +41,27 @@ export const FAIRNESS_DANGEROUS_GAP_SEC = 1.0
 // ── V2: AI Worker Configuration ──
 export const AI_WORKER_TARGET_INFERENCE_MS = 45
 export const AI_WORKER_FRAME_BUDGET_MS = 45
+export const HAND_PINCH_ENTER_THRESHOLD = 0.045
+export const HAND_PINCH_EXIT_THRESHOLD = 0.075
+export const HAND_GRAB_HOLD_MS = 100
+export const HAND_TRACKING_GRACE_MS = 120
+export const HAND_GRAB_COOLDOWN_MS = 180
+export const HAND_VELOCITY_HISTORY_SIZE = 5
+export const HAND_GRAB_RADIUS_PX = 95
+export const HAND_THROW_SPEED_THRESHOLD = 900
+export const HAND_PREDICTION_LEAD_MS = 28
+export const HAND_PREDICTION_MAX_DISTANCE_PX = 42
+export const HAND_PREDICTION_MIN_CONFIDENCE = 0.45
+export const HAND_SMOOTHING_OPEN = 0.58
+export const HAND_SMOOTHING_PINCHING = 0.5
+export const HAND_SMOOTHING_GRABBED = 0.34
+export const HAND_INTERACTION_PLANE_Z = 140
+export const HAND_THROW_Z_VELOCITY = 520
+export const THROWN_ORB_GRAVITY = 980
+export const THROWN_ORB_LIFETIME_SEC = 2.4
+export const THROWN_ORB_BASE_SPEED_SCALE = 0.85
+export const THROWN_ORB_WEAK_TOSS_FACTOR = 0.35
+export const THROWN_ORB_BONUS_POINTS = 200
 
 // ── V2: Depth Occlusion ──
 export const DEPTH_OCCLUSION_THRESHOLD = 0.15

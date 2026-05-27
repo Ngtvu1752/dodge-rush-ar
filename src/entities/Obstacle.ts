@@ -6,6 +6,7 @@ export const ObstacleType = {
   RedWallCenter: 'RedWallCenter',
   HighLaser: 'HighLaser',
   BlueOrb: 'BlueOrb',
+  ThrownOrb: 'ThrownOrb',
   Meteor: 'Meteor',
 } as const
 

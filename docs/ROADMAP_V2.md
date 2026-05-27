@@ -316,7 +316,7 @@ visual.position.set(
 | `src/workers/AIWorkerManager.ts` | Modify | Handle hand results |
 | `src/pose/PoseTypes.ts` | Modify | Add hand landmark types |
 | `src/render/DebugSkeleton.ts` | Modify | Draw hand landmarks when debug mode is active |
-| `src/input/HandTracker.ts` | Create | Processes raw hand landmarks into actionable state (pinch, grab, velocity) |
+| `src/input/HandTracker.ts` | Create | Processes raw hand landmarks into actionable per-hand state (pinch, grab, velocity) in parallel with body gestures |
 
 **HandData Type**:
 
@@ -345,6 +345,7 @@ interface HandData {
 - [ ] Hand tracking doesn't reduce pose tracking quality
 - [ ] FPS stays above 50 with pose + hands running
 - [ ] Hand landmarks are correctly mirrored (left hand appears on left side of screen)
+- [ ] Missing hand data degrades gracefully to `null` without breaking pose gameplay
 
 **Manual Test**:
 1. Enable debug (D key) — hand landmarks appear as colored dots
@@ -362,9 +363,13 @@ interface HandData {
 
 | File | Action | Description |
 |---|---|---|
-| `src/input/HandTracker.ts` | Modify | Add pinch detection, grab state machine, velocity history |
-| `src/input/GestureDetector.ts` | Modify | Integrate hand gestures alongside body gestures (support simultaneous gestures) |
+| `src/input/HandTracker.ts` | Modify | Add pinch detection, grab state machine, cooldown, and velocity history |
+| `src/input/GestureDetector.ts` | Modify | Keep body gesture detection parallel-safe; hand gestures remain owned by `HandTracker` |
 | `src/config/gameConfig.ts` | Modify | Add hand tracking constants (pinch threshold, velocity window, grab sensitivity) |
+
+**Architecture Note**:
+
+Body gestures and hand gestures must run in parallel. `GestureDetector` remains responsible for body posture/movement, while `HandTracker` owns pinch/grab/release state. Do not use a single exclusive gesture state machine for both systems.
 
 **Pinch State Machine**:
 
@@ -395,6 +400,7 @@ const vy = (velocityHistory[4].pos.y - velocityHistory[0].pos.y) / dt;
 - [ ] Hand velocity tracked over last 5 frames
 - [ ] Simultaneous body + hand gestures work (e.g., dodge left while pinching with right hand)
 - [ ] Gesture hold duration (100ms) prevents false triggers
+- [ ] Short hand tracking dropouts do not instantly cancel an active grab
 
 **Manual Test**:
 1. Pinch thumb and index — debug overlay shows "PINCH" state
@@ -414,7 +420,7 @@ const vy = (velocityHistory[4].pos.y - velocityHistory[0].pos.y) / dt;
 | File | Action | Description |
 |---|---|---|
 | `src/entities/ThrownOrb.ts` | Create | Thrown projectile entity with physics (position, velocity, gravity, lifetime) |
-| `src/entities/BlueOrb.ts` | Modify | Add `grabbed` state, follow hand position when grabbed |
+| `src/entities/BlueOrb.ts` | Modify | Add hybrid interaction state (`free/candidate/grabbed/thrown/consumed`) and follow a smoothed hand anchor when grabbed |
 | `src/collision/CollisionSystem.ts` | Modify | Add thrown-orb-vs-wall collision detection |
 | `src/game/GameManager.ts` | Modify | Track thrown orbs, update physics, evaluate collisions |
 | `src/render/entities/ThrownOrbVisual.ts` | Create | Three.js visual for thrown orb (glowing trail, spin animation) |
@@ -426,7 +432,7 @@ const vy = (velocityHistory[4].pos.y - velocityHistory[0].pos.y) / dt;
 1. BlueOrb spawns in scene (existing behavior)
 2. Player moves hand near orb (within grab radius ≈ 80px)
 3. Player pinches → orb enters GRABBED state
-4. Orb follows hand position (attached to wrist landmark)
+4. Orb follows a smoothed hand anchor on a shallow interaction plane
 5. Player makes throwing motion (hand velocity > threshold)
 6. Orb releases with throw velocity + slight upward arc
 7. Thrown orb travels in parabolic path
@@ -443,6 +449,7 @@ const vy = (velocityHistory[4].pos.y - velocityHistory[0].pos.y) / dt;
 - [ ] Thrown orb missing disappears after timeout
 - [ ] Score popup appears on successful hit (+200 bonus)
 - [ ] Can still touch BlueOrbs normally (existing V1 behavior) as alternative
+- [ ] If hand tracking is unavailable, BlueOrb touch still works as a graceful fallback
 
 **Manual Test**:
 1. Start game, wait for BlueOrb to spawn
