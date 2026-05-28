@@ -1,10 +1,14 @@
 import { GameState } from './GameState'
 import {
+  BLUE_ORB_FORCE_GAP_SEC,
+  BLUE_ORB_MIN_GAP_SEC,
   COUNTDOWN_SECONDS,
   HAND_GRAB_RADIUS_PX,
   HAND_THROW_SPEED_THRESHOLD,
   HAND_THROW_Z_VELOCITY,
   THROWN_ORB_BASE_SPEED_SCALE,
+  THROWN_ORB_THROW_UPWARD_LIFT,
+  THROWN_ORB_UPWARD_LIFT,
   THROWN_ORB_WEAK_TOSS_FACTOR,
   VANISHING_POINT_FOCAL_LENGTH,
 } from '../config/gameConfig'
@@ -16,7 +20,7 @@ import { HighLaser } from '../entities/HighLaser'
 import { BlueOrb } from '../entities/BlueOrb'
 import { Meteor } from '../entities/Meteor'
 import { ThrownOrb } from '../entities/ThrownOrb'
-import { CollisionSystem } from '../collision/CollisionSystem'
+import { CollisionSystem, type BlueOrbTouchPolicy } from '../collision/CollisionSystem'
 import type { PlayerAction } from '../input/GestureDetector'
 import type { HandTracker, TrackedHandState } from '../input/HandTracker'
 import type { PoseData } from '../pose/PoseTypes'
@@ -30,6 +34,19 @@ const MVP_TYPES = [
   ObstacleType.Meteor,
 ]
 
+type SpawnableObstacleType = (typeof MVP_TYPES)[number]
+
+function createSpawnEnabledState(): Record<SpawnableObstacleType, boolean> {
+  return {
+    [ObstacleType.RedWallLeft]: true,
+    [ObstacleType.RedWallRight]: true,
+    [ObstacleType.RedWallCenter]: true,
+    [ObstacleType.HighLaser]: true,
+    [ObstacleType.BlueOrb]: true,
+    [ObstacleType.Meteor]: true,
+  }
+}
+
 export class GameManager {
   private state: GameState = GameState.Loading
   private countdownTime = 0
@@ -38,6 +55,11 @@ export class GameManager {
   private lastBlueOrbSpawnTime = -Infinity
   private obstacles: Obstacle[] = []
   private thrownOrbs: ThrownOrb[] = []
+  private spawnEnabled = createSpawnEnabledState()
+  private blueOrbTouchPolicy: BlueOrbTouchPolicy = {
+    allowTouch: true,
+    suppressTouchForOrbIds: new Set<string>(),
+  }
   readonly score = new ScoreManager()
   readonly difficulty = new DifficultyManager()
   private collision = new CollisionSystem()
@@ -52,6 +74,19 @@ export class GameManager {
 
   getThrownOrbs(): readonly ThrownOrb[] {
     return this.thrownOrbs
+  }
+
+  getBlueOrbTouchPolicy(): BlueOrbTouchPolicy {
+    return this.blueOrbTouchPolicy
+  }
+
+  getSpawnEnabled(): Readonly<Record<SpawnableObstacleType, boolean>> {
+    return this.spawnEnabled
+  }
+
+  toggleSpawnType(type: SpawnableObstacleType): boolean {
+    this.spawnEnabled[type] = !this.spawnEnabled[type]
+    return this.spawnEnabled[type]
   }
 
   setCameraPermission(): void {
@@ -81,6 +116,7 @@ export class GameManager {
       this.spawnTimer = 0
       this.spawnTimestamp = 0
       this.lastBlueOrbSpawnTime = -Infinity
+      this.spawnEnabled = createSpawnEnabledState()
       this.state = GameState.Countdown
       this.countdownTime = COUNTDOWN_SECONDS
     }
@@ -113,6 +149,7 @@ export class GameManager {
       this.spawnTimer = 0
       this.spawnTimestamp = 0
       this.lastBlueOrbSpawnTime = -Infinity
+      this.spawnEnabled = createSpawnEnabledState()
       this.state = GameState.Ready
     }
   }
@@ -182,7 +219,7 @@ export class GameManager {
 
   evaluateCollisions(action: PlayerAction, pose: PoseData, timestamp: number): void {
     if (this.state === GameState.Playing) {
-      this.collision.evaluate(this.obstacles, action, pose, this.score, timestamp)
+      this.collision.evaluate(this.obstacles, action, pose, this.score, timestamp, this.blueOrbTouchPolicy)
     }
   }
 
@@ -190,6 +227,8 @@ export class GameManager {
     if (this.state !== GameState.Playing) return
 
     const blueOrbs = this.obstacles.filter((o): o is BlueOrb => o.type === ObstacleType.BlueOrb)
+    const suppressedOrbIds = new Set<string>()
+    const handsAvailable = handTracker.states.some((hand) => hand.present || hand.phase === 'pinching' || hand.phase === 'grabbed')
 
     for (const orb of blueOrbs) {
       if (orb.interactionState === 'free' || orb.interactionState === 'candidate') {
@@ -201,6 +240,8 @@ export class GameManager {
       const grabbedOrb = blueOrbs.find((orb) => orb.interactionState === 'grabbed' && orb.grabbedBy === hand.handedness)
 
       if (grabbedOrb) {
+        suppressedOrbIds.add(grabbedOrb.id)
+
         if (hand.phase === 'grabbed' || hand.present) {
           grabbedOrb.followHand(hand.x, hand.y, viewportWidth, viewportHeight)
         }
@@ -214,15 +255,21 @@ export class GameManager {
       const candidate = this.findNearestOrb(blueOrbs, hand)
       if (candidate) {
         candidate.setCandidate(true)
+        suppressedOrbIds.add(candidate.id)
       }
 
       if (candidate && hand.justGrabbed) {
         candidate.attachToHand(hand.handedness, hand.x, hand.y, viewportWidth, viewportHeight)
+        suppressedOrbIds.add(candidate.id)
       }
     }
 
+    this.blueOrbTouchPolicy = {
+      allowTouch: !handsAvailable,
+      suppressTouchForOrbIds: suppressedOrbIds,
+    }
+
     this.collision.evaluateThrownOrbHits(this.thrownOrbs, this.obstacles, this.score)
-    this.collision.evaluateThrownOrbVsLaser(this.thrownOrbs, this.obstacles)
   }
 
   getCountdownNumber(): string {
@@ -235,14 +282,43 @@ export class GameManager {
     const w = window.innerWidth
     const h = window.innerHeight
     const speed = this.difficulty.speed
+    const enabledTypes = MVP_TYPES.filter((type) => this.spawnEnabled[type])
+    const timeSinceBlueOrb = this.spawnTimestamp - this.lastBlueOrbSpawnTime
+
+    if (enabledTypes.length === 0) {
+      return
+    }
+
+    const enabledSafeTypes = enabledTypes.filter((type) => !this.difficulty.isDangerous(type))
+    const enabledNonBlueOrbTypes = enabledTypes.filter((type) => type !== ObstacleType.BlueOrb)
+    const enabledSafeNonBlueOrbTypes = enabledSafeTypes.filter((type) => type !== ObstacleType.BlueOrb)
 
     // Fairness guard: if too soon for dangerous, force BlueOrb
-    let type = MVP_TYPES[Math.floor(Math.random() * MVP_TYPES.length)]
-    if (this.spawnTimestamp - this.lastBlueOrbSpawnTime >= 4.0) {
+    let type = enabledTypes[Math.floor(Math.random() * enabledTypes.length)]
+    if (this.spawnEnabled[ObstacleType.BlueOrb] && timeSinceBlueOrb >= BLUE_ORB_FORCE_GAP_SEC) {
       type = ObstacleType.BlueOrb
     }
+
+    if (type === ObstacleType.BlueOrb && timeSinceBlueOrb < BLUE_ORB_MIN_GAP_SEC && enabledNonBlueOrbTypes.length > 0) {
+      type = enabledNonBlueOrbTypes[Math.floor(Math.random() * enabledNonBlueOrbTypes.length)]
+    }
+
     if (this.difficulty.isDangerous(type) && !this.difficulty.canSpawnDangerous(this.spawnTimestamp)) {
-      type = ObstacleType.BlueOrb
+      if (this.spawnEnabled[ObstacleType.BlueOrb]) {
+        if (timeSinceBlueOrb >= BLUE_ORB_MIN_GAP_SEC) {
+          type = ObstacleType.BlueOrb
+        } else if (enabledSafeNonBlueOrbTypes.length > 0) {
+          type = enabledSafeNonBlueOrbTypes[Math.floor(Math.random() * enabledSafeNonBlueOrbTypes.length)]
+        } else if (enabledSafeTypes.length > 0) {
+          type = enabledSafeTypes[Math.floor(Math.random() * enabledSafeTypes.length)]
+        } else {
+          return
+        }
+      } else if (enabledSafeTypes.length > 0) {
+        type = enabledSafeTypes[Math.floor(Math.random() * enabledSafeTypes.length)]
+      } else {
+        return
+      }
     }
 
     let obstacle: Obstacle
@@ -276,11 +352,16 @@ export class GameManager {
     this.obstacles.push(obstacle)
   }
 
-  debugSpawnBlueOrb(): void {
+  debugSpawnBlueOrb(): boolean {
+    if (!this.spawnEnabled[ObstacleType.BlueOrb]) {
+      return false
+    }
+
     const w = window.innerWidth
     const h = window.innerHeight
     this.lastBlueOrbSpawnTime = this.spawnTimestamp
     this.obstacles.push(new BlueOrb(w, h, this.difficulty.speed))
+    return true
   }
 
   private findNearestOrb(orbs: readonly BlueOrb[], hand: TrackedHandState): BlueOrb | null {
@@ -303,13 +384,17 @@ export class GameManager {
 
   private releaseGrabbedOrb(orb: BlueOrb, hand: TrackedHandState): void {
     const scale = VANISHING_POINT_FOCAL_LENGTH / (VANISHING_POINT_FOCAL_LENGTH + orb.worldZ)
-    const baseFactor = hand.speed >= HAND_THROW_SPEED_THRESHOLD
+    const isIntentionalThrow = hand.speed >= HAND_THROW_SPEED_THRESHOLD
+    const baseFactor = isIntentionalThrow
       ? THROWN_ORB_BASE_SPEED_SCALE
       : THROWN_ORB_WEAK_TOSS_FACTOR
+    const upwardLift = isIntentionalThrow
+      ? THROWN_ORB_THROW_UPWARD_LIFT
+      : THROWN_ORB_UPWARD_LIFT
 
     const velocityX = (hand.vx / scale) * baseFactor
-    const velocityY = (hand.vy / scale) * baseFactor
-    const velocityZ = hand.speed >= HAND_THROW_SPEED_THRESHOLD
+    const velocityY = ((hand.vy / scale) * baseFactor) - upwardLift
+    const velocityZ = isIntentionalThrow
       ? HAND_THROW_Z_VELOCITY
       : HAND_THROW_Z_VELOCITY * 0.45
 

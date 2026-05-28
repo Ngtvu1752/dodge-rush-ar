@@ -364,12 +364,14 @@ interface HandData {
 | File | Action | Description |
 |---|---|---|
 | `src/input/HandTracker.ts` | Modify | Add pinch detection, grab state machine, cooldown, and velocity history |
-| `src/input/GestureDetector.ts` | Modify | Keep body gesture detection parallel-safe; hand gestures remain owned by `HandTracker` |
+| `src/input/GestureDetector.ts` | Modify | Narrow to body-only action output; hand gestures remain owned by `HandTracker` |
 | `src/config/gameConfig.ts` | Modify | Add hand tracking constants (pinch threshold, velocity window, grab sensitivity) |
 
 **Architecture Note**:
 
 Body gestures and hand gestures must run in parallel. `GestureDetector` remains responsible for body posture/movement, while `HandTracker` owns pinch/grab/release state. Do not use a single exclusive gesture state machine for both systems.
+
+`PlayerAction` should remain body-only in Stage C (`dodgeLeft`, `dodgeRight`, `squat`). Do not keep pose-derived hand booleans such as `leftHandActive`, `rightHandActive`, or `shield` in the gameplay input contract once hand tracking is enabled.
 
 **Pinch State Machine**:
 
@@ -401,6 +403,7 @@ const vy = (velocityHistory[4].pos.y - velocityHistory[0].pos.y) / dt;
 - [ ] Simultaneous body + hand gestures work (e.g., dodge left while pinching with right hand)
 - [ ] Gesture hold duration (100ms) prevents false triggers
 - [ ] Short hand tracking dropouts do not instantly cancel an active grab
+- [ ] Debug/HUD hand status comes from `HandTracker`, not pose wrist heuristics
 
 **Manual Test**:
 1. Pinch thumb and index — debug overlay shows "PINCH" state
@@ -421,10 +424,14 @@ const vy = (velocityHistory[4].pos.y - velocityHistory[0].pos.y) / dt;
 |---|---|---|
 | `src/entities/ThrownOrb.ts` | Create | Thrown projectile entity with physics (position, velocity, gravity, lifetime) |
 | `src/entities/BlueOrb.ts` | Modify | Add hybrid interaction state (`free/candidate/grabbed/thrown/consumed`) and follow a smoothed hand anchor when grabbed |
+
+Stage C arbitration note: BlueOrb remains hybrid, but once hands are interaction-available the orb should follow a `grab-first` policy. Touch remains a fallback only when hands are unavailable, and a single orb must never resolve through both touch and throw paths.
 | `src/collision/CollisionSystem.ts` | Modify | Add thrown-orb-vs-wall collision detection |
 | `src/game/GameManager.ts` | Modify | Track thrown orbs, update physics, evaluate collisions |
 | `src/render/entities/ThrownOrbVisual.ts` | Create | Three.js visual for thrown orb (glowing trail, spin animation) |
 | `src/input/HandTracker.ts` | Modify | Detect grab/release events on BlueOrbs |
+
+Implementation note: the current codebase already contains a partial grab/throw pipeline. `V2-09` should stabilize and align that pipeline rather than rebuild it from scratch.
 
 **Grab-Throw Flow**:
 
@@ -436,8 +443,10 @@ const vy = (velocityHistory[4].pos.y - velocityHistory[0].pos.y) / dt;
 5. Player makes throwing motion (hand velocity > threshold)
 6. Orb releases with throw velocity + slight upward arc
 7. Thrown orb travels in parabolic path
-8. If thrown orb hits a RedWall → wall destroyed, bonus points
+8. If thrown orb hits a RedWall or Meteor → target destroyed, bonus points
 9. If thrown orb misses → disappears after 3 seconds
+
+`ThrownOrb vs HighLaser` is deferred to `V2-10` and should not be part of active `V2-09` gameplay acceptance.
 ```
 
 **Acceptance Criteria**:

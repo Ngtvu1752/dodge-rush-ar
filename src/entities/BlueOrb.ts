@@ -2,6 +2,10 @@ import type { Renderer } from '../render/Renderer'
 import { ObstacleType, type Obstacle } from './Obstacle'
 import {
   BLUE_ORB_APPROACH_SPEED_FACTOR,
+  BLUE_ORB_SPAWN_X_JITTER,
+  BLUE_ORB_SPAWN_X_LANES,
+  BLUE_ORB_SPAWN_Y_BANDS,
+  BLUE_ORB_SPAWN_Y_JITTER,
   BLUE_ORB_SPAWN_Z_MAX,
   BLUE_ORB_SPAWN_Z_MIN,
   HAND_INTERACTION_PLANE_Z,
@@ -16,6 +20,10 @@ function makeId(): string {
 
 function randomRange(min: number, max: number): number {
   return min + Math.random() * (max - min)
+}
+
+function pickRandom<T>(items: readonly T[]): T {
+  return items[Math.floor(Math.random() * items.length)]
 }
 
 export class BlueOrb implements Obstacle {
@@ -55,8 +63,10 @@ export class BlueOrb implements Obstacle {
     this.baseHeight = this.radius * 2
     this.speed = speed
 
-    this.anchorWorldX = randomRange(-canvasWidth * 0.22, canvasWidth * 0.22)
-    this.anchorWorldY = randomRange(-canvasHeight * 0.1, canvasHeight * 0.18)
+    const laneX = pickRandom(BLUE_ORB_SPAWN_X_LANES)
+    const bandY = pickRandom(BLUE_ORB_SPAWN_Y_BANDS)
+    this.anchorWorldX = canvasWidth * (laneX + randomRange(-BLUE_ORB_SPAWN_X_JITTER, BLUE_ORB_SPAWN_X_JITTER))
+    this.anchorWorldY = canvasHeight * (bandY + randomRange(-BLUE_ORB_SPAWN_Y_JITTER, BLUE_ORB_SPAWN_Y_JITTER))
     this.worldZ = randomRange(BLUE_ORB_SPAWN_Z_MIN, BLUE_ORB_SPAWN_Z_MAX)
 
     this.project(canvasWidth, canvasHeight)
@@ -130,11 +140,13 @@ export class BlueOrb implements Obstacle {
   }
 
   private project(canvasWidth: number, canvasHeight: number): void {
-    const orbitX = Math.sin(this.age * 1.4 + this.floatPhase) * 42
-    const orbitY = Math.cos(this.age * 1.9 + this.floatPhase) * 26
+    if (this.interactionState === 'free' || this.interactionState === 'candidate') {
+      const orbitX = Math.sin(this.age * 1.4 + this.floatPhase) * 42
+      const orbitY = Math.cos(this.age * 1.9 + this.floatPhase) * 26
 
-    this.worldX = this.anchorWorldX + orbitX
-    this.worldY = this.anchorWorldY + orbitY
+      this.worldX = this.anchorWorldX + orbitX
+      this.worldY = this.anchorWorldY + orbitY
+    }
 
     const cx = canvasWidth / 2
     const cy = canvasHeight / 2
@@ -156,15 +168,10 @@ export class BlueOrb implements Obstacle {
     const pulse = Math.sin(this.age * 5) * Math.max(2, this.screenRadius * 0.12)
     const drawRadius = this.screenRadius + pulse
 
-    const fadeAlpha = this.age > this.lifetime - 0.5
-      ? (this.lifetime - this.age) / 0.5
-      : 1
-
     const ctx = r.ctx
     ctx.save()
-    ctx.globalAlpha = fadeAlpha
 
-    r.drawCircle(this.centerX, this.centerY, drawRadius, 'rgba(0, 120, 255, 0.6)', '#4488ff', 3)
+    r.drawCircle(this.centerX, this.centerY, drawRadius, '#0f6fff', '#9dd0ff', 4)
 
     r.drawText('TOUCH', this.centerX, this.centerY + drawRadius + 20, {
       size: Math.max(14, 20 * (this.width / this.baseWidth)),

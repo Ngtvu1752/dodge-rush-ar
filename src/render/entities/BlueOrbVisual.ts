@@ -2,7 +2,6 @@ import * as THREE from 'three'
 import gsap from 'gsap'
 import type { VisualAdapter } from './VisualAdapter'
 import type { Obstacle } from '../../entities/Obstacle'
-import { ORB_LIFETIME_SEC } from '../../config/gameConfig'
 
 const ORB_RADIUS = 35
 const RING_INNER = 42
@@ -24,11 +23,11 @@ export class BlueOrbVisual implements VisualAdapter {
 
     // Metallic blue sphere
     this.sphereMaterial = new THREE.MeshStandardMaterial({
-      color: 0x2288ff,
+      color: 0x0f6fff,
+      emissive: 0x0b3ea8,
+      emissiveIntensity: 0.9,
       roughness: 0.1,
-      metalness: 0.8,
-      transparent: true,
-      opacity: 1.0,
+      metalness: 0.72,
     })
 
     const sphereGeo = new THREE.SphereGeometry(ORB_RADIUS, 32, 32)
@@ -37,9 +36,7 @@ export class BlueOrbVisual implements VisualAdapter {
 
     // Glow ring around the orb
     this.ringMaterial = new THREE.MeshBasicMaterial({
-      color: 0x4488ff,
-      transparent: true,
-      opacity: 0.4,
+      color: 0x6eb6ff,
       side: THREE.DoubleSide,
       depthWrite: false,
     })
@@ -70,32 +67,24 @@ export class BlueOrbVisual implements VisualAdapter {
     // Rotate ring slowly
     this.ringMesh.rotation.z += 0.01
 
-    // Fade out as lifetime progresses
-    const lifetimeRatio = Math.min(this.localTime / ORB_LIFETIME_SEC, 1)
-    const fadeAlpha = lifetimeRatio > 0.83 // last ~0.5s of 3s
-      ? 1 - (lifetimeRatio - 0.83) / 0.17
-      : 1
-
-    this.sphereMaterial.opacity = fadeAlpha
-    this.ringMaterial.opacity = 0.4 * fadeAlpha
+    this.sphereMaterial.color.set(0x0f6fff)
+    this.sphereMaterial.emissive.set(0x0b3ea8)
+    this.sphereMaterial.emissiveIntensity = 0.9
     if (orb.interactionState === 'candidate') {
-      this.ringMaterial.opacity = Math.max(this.ringMaterial.opacity, 0.75)
-      this.ringMaterial.color.set(0xbde7ff)
+      this.ringMaterial.color.set(0xd9f1ff)
+      this.sphereMaterial.emissiveIntensity = 1.2
     } else if (orb.interactionState === 'grabbed') {
-      this.ringMaterial.opacity = 0.85
       this.ringMaterial.color.set(0xffffff)
+      this.sphereMaterial.color.set(0x2f8fff)
+      this.sphereMaterial.emissive.set(0x2f8fff)
+      this.sphereMaterial.emissiveIntensity = 1.45
     } else {
-      this.ringMaterial.color.set(0x4488ff)
+      this.ringMaterial.color.set(0x6eb6ff)
     }
 
-    // Ring pulses faster as lifetime decreases
-    const pulseSpeed = 3 + lifetimeRatio * 8
+    const pulseSpeed = orb.interactionState === 'grabbed' ? 8 : 4.5
     const pulseScale = 1 + Math.sin(this.localTime * pulseSpeed) * 0.08
     this.ringMesh.scale.set(pulseScale, pulseScale, 1)
-
-    // Emissive glow increases as orb ages
-    this.sphereMaterial.emissive = new THREE.Color(0x1144aa)
-    this.sphereMaterial.emissiveIntensity = 0.3 + lifetimeRatio * 0.5
 
     // Spawn animation — target is zScale, not 1
     if (!this.spawnPlayed) {
@@ -153,10 +142,6 @@ export class BlueOrbVisual implements VisualAdapter {
               duration: 0.2,
               ease: 'power2.in',
             })
-            gsap.to(this.sphereMaterial, {
-              opacity: 0,
-              duration: 0.2,
-            })
           },
         })
       },
@@ -169,14 +154,6 @@ export class BlueOrbVisual implements VisualAdapter {
       x: 0, y: 0, z: 0,
       duration: 0.3,
       ease: 'power3.in',
-    })
-    gsap.to(this.sphereMaterial, {
-      opacity: 0,
-      duration: 0.3,
-    })
-    gsap.to(this.ringMaterial, {
-      opacity: 0,
-      duration: 0.2,
     })
   }
 }

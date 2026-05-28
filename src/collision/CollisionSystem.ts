@@ -20,6 +20,11 @@ import {
 
 type RedWall = RedWallLeft | RedWallRight | RedWallCenter
 
+export type BlueOrbTouchPolicy = {
+  allowTouch: boolean
+  suppressTouchForOrbIds: ReadonlySet<string>
+}
+
 function isRedWall(o: Obstacle): o is RedWall {
   return o.type === 'RedWallLeft' || o.type === 'RedWallRight' || o.type === 'RedWallCenter'
 }
@@ -37,7 +42,14 @@ function isMeteor(o: Obstacle): o is Meteor {
 }
 
 export class CollisionSystem {
-  evaluate(obstacles: readonly Obstacle[], action: PlayerAction, pose: PoseData, score: ScoreManager, timestamp: number): void {
+  evaluate(
+    obstacles: readonly Obstacle[],
+    action: PlayerAction,
+    pose: PoseData,
+    score: ScoreManager,
+    timestamp: number,
+    blueOrbTouchPolicy: BlueOrbTouchPolicy,
+  ): void {
     for (const o of obstacles) {
       if (o.resolved) continue
 
@@ -46,7 +58,7 @@ export class CollisionSystem {
       } else if (isHighLaser(o)) {
         this.evaluateHighLaser(o, action, score, timestamp)
       } else if (isBlueOrb(o)) {
-        this.evaluateBlueOrb(o, pose, score)
+        this.evaluateBlueOrb(o, pose, score, blueOrbTouchPolicy)
       } else if (isMeteor(o)) {
         this.evaluateMeteor(o, pose, score, timestamp)
       }
@@ -145,7 +157,7 @@ export class CollisionSystem {
     }
   }
 
-  private evaluateBlueOrb(orb: BlueOrb, pose: PoseData, score: ScoreManager): void {
+  private evaluateBlueOrb(orb: BlueOrb, pose: PoseData, score: ScoreManager, touchPolicy: BlueOrbTouchPolicy): void {
     if (orb.interactionState === 'grabbed' || orb.interactionState === 'thrown' || orb.interactionState === 'consumed') {
       return
     }
@@ -160,6 +172,9 @@ export class CollisionSystem {
 
     // Only check collision while orb is on screen
     if (orb.resolved) return
+
+    if (!touchPolicy.allowTouch) return
+    if (touchPolicy.suppressTouchForOrbIds.has(orb.id)) return
 
     if (!pose.detected) return
 

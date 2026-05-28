@@ -143,11 +143,10 @@ export type PlayerAction = {
   dodgeLeft: boolean;
   dodgeRight: boolean;
   squat: boolean;
-  leftHandActive: boolean;
-  rightHandActive: boolean;
-  shield: boolean;
 };
 ```
+
+`PlayerAction` is body-only. Hand pinch/grab/release state belongs to the hand-tracking pipeline, not pose-derived gesture flags.
 
 ### Rect / Circle
 ```typescript

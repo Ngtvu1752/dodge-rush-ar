@@ -24,6 +24,16 @@ import type { ModelType } from './workers/AITypes'
 import { DebugDepthMap } from './render/DebugDepthMap'
 import { ObstacleType } from './entities/Obstacle'
 import type { BlueOrb } from './entities/BlueOrb'
+import type { TrackedHandState } from './input/HandTracker'
+
+const obstacleToggleKeys = {
+  '4': { type: ObstacleType.RedWallLeft, label: 'RedWallLeft' },
+  '5': { type: ObstacleType.RedWallRight, label: 'RedWallRight' },
+  '6': { type: ObstacleType.RedWallCenter, label: 'RedWallCenter' },
+  '7': { type: ObstacleType.HighLaser, label: 'HighLaser' },
+  '8': { type: ObstacleType.BlueOrb, label: 'BlueOrb' },
+  '9': { type: ObstacleType.Meteor, label: 'Meteor' },
+} as const
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game-canvas')!
 const entityCanvas = document.querySelector<HTMLCanvasElement>('#entity-canvas')!
@@ -54,6 +64,28 @@ let lastTimestamp = 0
 let loadingMessage = ''
 let loadingError = ''
 
+const HAND_DEBUG_EVENT_TTL_MS = 240
+
+type HandDebugPulse = {
+  label: 'PINCH' | 'GRAB' | 'RELEASE' | '-'
+  until: number
+}
+
+type ThrownOrbDebugPulse = {
+  label: 'BULLSEYE' | 'MISS' | 'none'
+  until: number
+}
+
+const handDebugPulse: Record<'left' | 'right', HandDebugPulse> = {
+  left: { label: '-', until: 0 },
+  right: { label: '-', until: 0 },
+}
+
+const thrownOrbDebugPulse: ThrownOrbDebugPulse = {
+  label: 'none',
+  until: 0,
+}
+
 function clampFeedbackPosition(x: number, y: number): { x: number; y: number } {
   const marginX = 120
   const marginY = 90
@@ -61,6 +93,67 @@ function clampFeedbackPosition(x: number, y: number): { x: number; y: number } {
     x: Math.max(marginX, Math.min(window.innerWidth - marginX, x)),
     y: Math.max(marginY, Math.min(window.innerHeight - marginY, y)),
   }
+}
+
+function getHandInstantEventLabel(hand: TrackedHandState): HandDebugPulse['label'] {
+  if (hand.justReleased) {
+    return 'RELEASE'
+  }
+
+  if (hand.justGrabbed) {
+    return 'GRAB'
+  }
+
+  if (hand.justPinched) {
+    return 'PINCH'
+  }
+
+  return '-'
+}
+
+function updateHandDebugPulse(hand: TrackedHandState, timestamp: number): void {
+  const pulse = handDebugPulse[hand.handedness]
+  const instantEvent = getHandInstantEventLabel(hand)
+
+  if (instantEvent !== '-') {
+    pulse.label = instantEvent
+    pulse.until = timestamp + HAND_DEBUG_EVENT_TTL_MS
+    return
+  }
+
+  if (pulse.until <= timestamp) {
+    pulse.label = '-'
+  }
+}
+
+function renderHandDebugEvents(baseY: number, timestamp: number): void {
+  const hands = [handTracker.left, handTracker.right]
+
+  hands.forEach((hand, index) => {
+    const pulse = handDebugPulse[hand.handedness]
+    const recentEvent = pulse.until > timestamp ? pulse.label : '-'
+    const instantEvent = getHandInstantEventLabel(hand)
+    const line = `${hand.handedness.toUpperCase()} recent=${recentEvent} now=${instantEvent} present=${hand.present}`
+    renderer.drawText(line, 10, baseY + index * 18, {
+      size: 14,
+      color: recentEvent !== '-' ? '#ffd166' : '#88aacc',
+      align: 'left',
+      baseline: 'top',
+    })
+  })
+}
+
+function updateThrownOrbDebugPulse(label: 'BULLSEYE' | 'MISS', timestamp: number): void {
+  thrownOrbDebugPulse.label = label
+  thrownOrbDebugPulse.until = timestamp + 700
+}
+
+function getThrownOrbDebugLabel(timestamp: number): ThrownOrbDebugPulse['label'] {
+  if (thrownOrbDebugPulse.until > timestamp) {
+    return thrownOrbDebugPulse.label
+  }
+
+  return 'none'
 }
 
 // V2 model toggle state
@@ -147,6 +240,12 @@ window.addEventListener('keydown', (e) => {
     console.info(`[Scheduler] Depth: ${modelEnabled.depth ? 'ON' : 'OFF'}`)
   }
 
+  if (e.key in obstacleToggleKeys) {
+    const toggle = obstacleToggleKeys[e.key as keyof typeof obstacleToggleKeys]
+    const enabled = game.toggleSpawnType(toggle.type)
+    console.info(`[Spawn Toggle] ${toggle.label}: ${enabled ? 'ON' : 'OFF'}`)
+  }
+
   // F key: toggle depth map debug overlay
   if (e.key === 'f' || e.key === 'F') {
     debugDepthMap.toggle()
@@ -168,7 +267,9 @@ window.addEventListener('keydown', (e) => {
       feedbackPopup.show('MISS', '#ff8844')
     }
     if (e.key === 'o' || e.key === 'O') {
-      game.debugSpawnBlueOrb()
+      if (!game.debugSpawnBlueOrb()) {
+        console.info('[Spawn Toggle] BlueOrb is OFF, debug spawn skipped.')
+      }
     }
   }
 })
@@ -224,6 +325,8 @@ function gameLoop(timestamp: number) {
   const pose = poseSmoother.smooth(raw)
   const hands = aiWorkerManager.lastHands
   handTracker.update(hands, timestamp, renderer.width, renderer.height)
+  updateHandDebugPulse(handTracker.left, timestamp)
+  updateHandDebugPulse(handTracker.right, timestamp)
 
   // Draw depth map debug overlay (reads from worker results)
   const depthMap = aiWorkerManager.lastDepthMap
@@ -234,6 +337,7 @@ function gameLoop(timestamp: number) {
 
   if (debugMode) {
     debugSkeleton.draw(renderer, pose, hands, handTracker.states)
+    renderHandDebugEvents(40, timestamp)
   }
 
   const state = game.getState()
@@ -250,8 +354,8 @@ function gameLoop(timestamp: number) {
     const cal = calibration.data
     if (cal) {
       const action = gestureDetector.detect(pose, cal, timestamp)
-      game.evaluateCollisions(action, pose, timestamp)
       game.updateHandInteractions(handTracker, renderer.width, renderer.height)
+      game.evaluateCollisions(action, pose, timestamp)
 
       const obstacles = [...game.getObstacles(), ...game.getThrownOrbs()]
       obstacleVisualManager.sync(obstacles, renderer.width, renderer.height)
@@ -281,6 +385,7 @@ function gameLoop(timestamp: number) {
             } else if (o.type === ObstacleType.ThrownOrb) {
               feedbackPopup.show('BULLSEYE!', '#66ccff', screenX, screenY)
               particleEmitter.burst(screenX, screenY, 'sparkle')
+              updateThrownOrbDebugPulse('BULLSEYE', timestamp)
             } else if (o.type === 'HighLaser') {
               feedbackPopup.show('SQUAT OK', '#00ff88', screenX, screenY)
               particleEmitter.burst(screenX, screenY, 'success')
@@ -291,6 +396,9 @@ function gameLoop(timestamp: number) {
           } else if (o.result === 'fail') {
             if (o.type === 'BlueOrb') {
               feedbackPopup.show('MISS', '#ff8844', screenX, screenY)
+            } else if (o.type === ObstacleType.ThrownOrb) {
+              feedbackPopup.show('THROW MISS', '#66ccff', screenX, screenY)
+              updateThrownOrbDebugPulse('MISS', timestamp)
             } else {
               feedbackPopup.show('HIT!', '#ff4444', screenX, screenY)
               particleEmitter.burst(screenX, screenY, 'fail')
@@ -306,6 +414,14 @@ function gameLoop(timestamp: number) {
         const hipY = (pose.leftHip.y + pose.rightHip.y) / 2
         const offset = hipX - cal.neutralCenterX
         const drop = hipY - cal.standingHipY
+        const leftHand = handTracker.left
+        const rightHand = handTracker.right
+        const activeGrab = game.getObstacles().find(
+          (o) => o.type === ObstacleType.BlueOrb && (o as BlueOrb).interactionState === 'grabbed',
+        ) as BlueOrb | undefined
+        const thrownOrbs = game.getThrownOrbs()
+        const blueOrbTouchPolicy = game.getBlueOrbTouchPolicy()
+        const spawnEnabled = game.getSpawnEnabled()
 
         const lines = [
           `Difficulty: ${game.difficulty.level}`,
@@ -313,12 +429,16 @@ function gameLoop(timestamp: number) {
           `offset=${offset.toFixed(3)}  drop=${drop.toFixed(3)}`,
           `dodgeL=${action.dodgeLeft}  dodgeR=${action.dodgeRight}`,
           `squat=${action.squat}`,
-          `poseHands=${action.leftHandActive}/${action.rightHandActive} shield=${action.shield}`,
-          `L:${handTracker.left.phase} ${handTracker.left.speed.toFixed(0)}px/s  R:${handTracker.right.phase} ${handTracker.right.speed.toFixed(0)}px/s`,
-          `grab=${game.getObstacles().some((o) => o.type === ObstacleType.BlueOrb && (o as BlueOrb).interactionState === 'grabbed')} throwReady=${handTracker.left.canThrow || handTracker.right.canThrow}`,
+          `L:${leftHand.phase} conf=${leftHand.confidence.toFixed(2)} pinch=${leftHand.pinchDistance.toFixed(3)} speed=${leftHand.speed.toFixed(0)} throw=${leftHand.canThrow}`,
+          `R:${rightHand.phase} conf=${rightHand.confidence.toFixed(2)} pinch=${rightHand.pinchDistance.toFixed(3)} speed=${rightHand.speed.toFixed(0)} throw=${rightHand.canThrow}`,
+          `grab=${activeGrab ? activeGrab.grabbedBy : 'none'} ready=${leftHand.canThrow || rightHand.canThrow}`,
+          `orbTouch=${blueOrbTouchPolicy.allowTouch ? 'fallback' : 'grab-first'} suppressedOrbs=${blueOrbTouchPolicy.suppressTouchForOrbIds.size}`,
+          `thrown=${thrownOrbs.length} lastThrow=${getThrownOrbDebugLabel(timestamp)}`,
+          `spawn [4]L=${spawnEnabled.RedWallLeft ? 'ON' : 'OFF'} [5]R=${spawnEnabled.RedWallRight ? 'ON' : 'OFF'} [6]C=${spawnEnabled.RedWallCenter ? 'ON' : 'OFF'}`,
+          `spawn [7]Laser=${spawnEnabled.HighLaser ? 'ON' : 'OFF'} [8]Orb=${spawnEnabled.BlueOrb ? 'ON' : 'OFF'} [9]Meteor=${spawnEnabled.Meteor ? 'ON' : 'OFF'}`,
         ]
         lines.forEach((line, i) => {
-          renderer.drawText(line, 10, 40 + i * 18, {
+          renderer.drawText(line, 10, 86 + i * 18, {
             size: 14,
             color: '#00ff88',
             align: 'left',
@@ -334,7 +454,7 @@ function gameLoop(timestamp: number) {
           `pose: ${(ss?.inferenceMs.pose ?? 0).toFixed(1)}ms  hands: ${(ss?.inferenceMs.hands ?? 0).toFixed(1)}ms  depth: ${(ss?.inferenceMs.depth ?? 0).toFixed(1)}ms`,
           `total: ${(ss?.lastTotalMs ?? 0).toFixed(1)}ms  budget exceeded: ${ss?.budgetExceeded ?? false}`,
         ]
-        const baseY = 40 + lines.length * 18 + 10
+        const baseY = 86 + lines.length * 18 + 10
         schedulerLines.forEach((line, i) => {
           renderer.drawText(line, 10, baseY + i * 18, {
             size: 14,

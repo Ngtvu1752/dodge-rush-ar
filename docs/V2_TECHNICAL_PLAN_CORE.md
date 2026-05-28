@@ -348,6 +348,8 @@ Hand Landmarks (21 points):
 
 The hand tracking system needs to recognize several gestures beyond simple proximity:
 
+Architecture note: body locomotion and hand interaction should stay on separate channels. `GestureDetector` should output only body actions (`dodgeLeft`, `dodgeRight`, `squat`), while hand pinch/grab/release state, confidence, and velocity remain owned by `HandTracker`.
+
 ```typescript
 interface HandState {
   landmarks: Point[];           // 21 landmarks, normalized
@@ -417,6 +419,10 @@ function updateThrownOrb(orb: ThrownOrb, dt: number): void {
 ```
 
 **Collision with Red Walls**: AABB overlap between thrown orb position and wall bounds. On hit: wall is destroyed, player scores bonus points, satisfying particle burst.
+
+For the current Stage C rollout, this projectile path should also support Meteor as a valid target. Laser deflection should remain deferred to the later hand-polish phase rather than being required for the core grab/throw slice.
+
+BlueOrb interaction policy for Stage C should be hybrid but prioritized: if hands are interaction-available, candidate/grab flow suppresses wrist-touch resolution for that orb. If hands are unavailable, V1-style touch remains the fallback interaction.
 
 ### 4.4 Hand Tracking Performance Budget
 
