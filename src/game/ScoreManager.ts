@@ -16,6 +16,9 @@ export class ScoreManager {
   fails = 0
   misses = 0
 
+  onComboUp?: () => void
+  onComboBreak?: () => void
+
   get remaining(): number {
     return Math.max(GAME_DURATION_SEC - this.elapsed, 0)
   }
@@ -45,26 +48,38 @@ export class ScoreManager {
   }
 
   registerSuccess(basePoints: number): void {
+    const prevMultiplier = this.multiplier
     this.score += Math.round(basePoints * this.multiplier)
     this.combo++
     if (this.combo > this.bestCombo) {
       this.bestCombo = this.combo
     }
     this.updateMultiplier()
+    if (this.multiplier > prevMultiplier) {
+      this.onComboUp?.()
+    }
     this.successes++
   }
 
   registerFail(): void {
     this.health--
+    const hadCombo = this.combo > 0
     this.combo = 0
     this.multiplier = MULTIPLIERS[0]
     this.fails++
+    if (hadCombo) {
+      this.onComboBreak?.()
+    }
   }
 
   registerMiss(): void {
+    const hadCombo = this.combo > 0
     this.combo = 0
     this.multiplier = MULTIPLIERS[0]
     this.misses++
+    if (hadCombo) {
+      this.onComboBreak?.()
+    }
   }
 
   private updateMultiplier(): void {

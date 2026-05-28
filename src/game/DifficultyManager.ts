@@ -16,6 +16,9 @@ export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard'
 export class DifficultyManager {
   private elapsed = 0
   private lastDangerousSpawnTime = -Infinity
+  private prevLevel: DifficultyLevel = 'Easy'
+
+  onDifficultyChange?: (level: DifficultyLevel) => void
 
   get level(): DifficultyLevel {
     if (this.elapsed < DIFFICULTY_EASY_END) return 'Easy'
@@ -37,11 +40,17 @@ export class DifficultyManager {
 
   update(dt: number): void {
     this.elapsed += dt
+    const current = this.level
+    if (current !== this.prevLevel) {
+      this.prevLevel = current
+      this.onDifficultyChange?.(current)
+    }
   }
 
   reset(): void {
     this.elapsed = 0
     this.lastDangerousSpawnTime = -Infinity
+    this.prevLevel = 'Easy'
   }
 
   canSpawnDangerous(timestamp: number): boolean {

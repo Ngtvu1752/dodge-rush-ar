@@ -97,3 +97,6 @@ export const METEOR_HIT_ZONE_Z = 120
 export const METEOR_DESPAWN_Z = 50
 export const METEOR_SCREEN_RADIUS = 80
 export const METEOR_SPIN_SPEED = 1.5
+
+// ── SFX ──
+export const SFX_ENABLED = true

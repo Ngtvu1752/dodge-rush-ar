@@ -27,6 +27,7 @@ import type { BlueOrb } from './entities/BlueOrb'
 import type { TrackedHandState } from './input/HandTracker'
 import { detectRuntimeCapabilities } from './utils/FeatureDetection'
 import { PerformanceMonitor } from './utils/PerformanceMonitor'
+import { SFXManager } from './audio/SFXManager'
 
 const obstacleToggleKeys = {
   '4': { type: ObstacleType.RedWallLeft, label: 'RedWallLeft' },
@@ -62,9 +63,18 @@ const debugDepthMap = new DebugDepthMap()
 const grabIndicator = new GrabIndicator(sceneManager.scene)
 const runtimeCapabilities = detectRuntimeCapabilities()
 const performanceMonitor = new PerformanceMonitor()
+const sfx = new SFXManager()
+
+// Wire up SFX callbacks
+game.score.onComboUp = () => sfx.play('comboUp')
+game.score.onComboBreak = () => sfx.play('comboBreak')
+game.difficulty.onDifficultyChange = () => sfx.play('difficultyUp')
 
 let debugMode = false
+let sfxMuted = false
 let lastTimestamp = 0
+let prevCountdown = ''
+let prevState: GameState = GameState.Loading
 let loadingMessage = ''
 let loadingError = ''
 let runtimeProfile: RuntimeProfile = runtimeCapabilities.recommendedProfile
@@ -176,7 +186,8 @@ function getRuntimeStatusLabel(): string {
   const suffix = runtimeCapabilities.fallbackReason !== 'none'
     ? `  ${runtimeCapabilities.fallbackReason}`
     : ''
-  return `Runtime: ${runtimeProfile.toUpperCase()}  ${occlusion}${suffix}`
+  const sfxStatus = sfxMuted ? '  SFX:MUTED' : ''
+  return `Runtime: ${runtimeProfile.toUpperCase()}  ${occlusion}${suffix}${sfxStatus}`
 }
 
 function getCapabilityStatusLabel(): string {
@@ -323,6 +334,13 @@ window.addEventListener('keydown', (e) => {
     console.info(`[Depth] Debug overlay: ${debugDepthMap.visible ? 'ON' : 'OFF'}`)
   }
 
+  // M key: toggle SFX mute
+  if (e.key === 'm' || e.key === 'M') {
+    sfxMuted = !sfxMuted
+    sfx.setMuted(sfxMuted)
+    console.info(`[SFX] ${sfxMuted ? 'MUTED' : 'UNMUTED'}`)
+  }
+
   // Dev-only test controls (temporary, not real gameplay)
     if (state === GameState.Playing) {
       if (e.key === 's' || e.key === 'S') {
@@ -332,10 +350,6 @@ window.addEventListener('keydown', (e) => {
       if (e.key === 't' || e.key === 'T') {
         game.score.registerFail()
         feedbackPopup.show('HIT!', '#ff4444', undefined, undefined, { fontSizeRem: 2.2, travelY: -75, glowColor: '#ff8a8a' })
-      }
-      if (e.key === 'm' || e.key === 'M') {
-        game.score.registerMiss()
-        feedbackPopup.show('MISS', '#ff8844', undefined, undefined, { fontSizeRem: 1.8, travelY: -70 })
       }
     if (e.key === 'o' || e.key === 'O') {
       if (!game.debugSpawnBlueOrb()) {
@@ -381,6 +395,24 @@ function gameLoop(timestamp: number) {
   lastTimestamp = timestamp
 
   game.update(dt)
+
+  // Countdown SFX
+  const currentCountdown = game.getCountdownNumber()
+  if (currentCountdown !== prevCountdown) {
+    if (currentCountdown === 'GO!') {
+      sfx.play('countdownGo')
+    } else if (currentCountdown === '3' || currentCountdown === '2' || currentCountdown === '1') {
+      sfx.play('countdown')
+    }
+    prevCountdown = currentCountdown
+  }
+
+  // Game over SFX
+  const currentState = game.getState()
+  if (currentState === GameState.GameOver && prevState !== GameState.GameOver) {
+    sfx.play('gameOver')
+  }
+  prevState = currentState
 
   renderer.clear(!debugMode)
 
@@ -428,8 +460,17 @@ function gameLoop(timestamp: number) {
     const cal = calibration.data
     if (cal) {
       const action = gestureDetector.detect(pose, cal, timestamp)
+      const prevThrownCount = game.getThrownOrbs().length
       game.updateHandInteractions(handTracker, renderer.width, renderer.height)
       game.evaluateCollisions(action, pose, timestamp)
+
+      // Hand interaction SFX
+      if (handTracker.left.justGrabbed || handTracker.right.justGrabbed) {
+        sfx.play('grab')
+      }
+      if (game.getThrownOrbs().length > prevThrownCount) {
+        sfx.play('throw')
+      }
 
       const obstacles = [...game.getObstacles(), ...game.getThrownOrbs()]
       obstacleVisualManager.sync(obstacles, renderer.width, renderer.height)
@@ -454,6 +495,7 @@ function gameLoop(timestamp: number) {
 
             if (o.result === 'success') {
               if (o.type === 'BlueOrb') {
+                sfx.play('orbTouch')
                 feedbackPopup.show('TOUCHED!', '#3ff5a6', screenX, screenY, {
                   fontSizeRem: 1.85,
                   travelY: -78,
@@ -461,6 +503,7 @@ function gameLoop(timestamp: number) {
                 })
                 particleEmitter.burst(screenX, screenY, 'sparkle')
               } else if (o.type === ObstacleType.ThrownOrb) {
+                sfx.play('bullseye')
                 feedbackPopup.show('BULLSEYE!', '#7fd6ff', screenX, screenY, {
                   fontSizeRem: 2.3,
                   travelY: -118,
@@ -470,12 +513,14 @@ function gameLoop(timestamp: number) {
                 particleEmitter.burst(screenX, screenY, 'projectileHit')
                 updateThrownOrbDebugPulse('BULLSEYE', timestamp)
               } else if (o.type === 'HighLaser') {
+                sfx.play('squat')
                 feedbackPopup.show('SQUAT OK', '#00ff88', screenX, screenY, {
                   fontSizeRem: 1.8,
                   travelY: -82,
                 })
                 particleEmitter.burst(screenX, screenY, 'success')
               } else if (o.resultCause === 'projectile') {
+                sfx.play(o.type === 'Meteor' ? 'meteorDown' : 'wallBreak')
                 const hitLabel = o.type === 'Meteor' ? 'METEOR DOWN' : 'WALL BREAK'
                 const popupColor = o.type === 'Meteor' ? '#ffbf7a' : '#ff8d9c'
                 feedbackPopup.show(hitLabel, popupColor, screenX, screenY, {
@@ -489,6 +534,7 @@ function gameLoop(timestamp: number) {
                   updateProjectileTargetDebugPulse(o.type, timestamp)
                 }
               } else {
+                sfx.play('dodge')
                 feedbackPopup.show('DODGED!', '#00ff88', screenX, screenY, {
                   fontSizeRem: 1.95,
                   travelY: -86,
@@ -497,11 +543,13 @@ function gameLoop(timestamp: number) {
               }
             } else if (o.result === 'fail') {
               if (o.type === 'BlueOrb') {
+                sfx.play('orbMiss')
                 feedbackPopup.show('MISS', '#ff8844', screenX, screenY, {
                   fontSizeRem: 1.65,
                   travelY: -68,
                 })
               } else if (o.type === ObstacleType.ThrownOrb) {
+                sfx.play('orbMiss')
                 feedbackPopup.show('THROW MISS', '#8dbfe6', screenX, screenY, {
                   fontSizeRem: 1.75,
                   travelY: -72,
@@ -509,6 +557,7 @@ function gameLoop(timestamp: number) {
                 })
                 updateThrownOrbDebugPulse('MISS', timestamp)
               } else {
+                sfx.play('hit')
                 feedbackPopup.show('HIT!', '#ff4444', screenX, screenY, {
                   fontSizeRem: 2.15,
                   travelY: -72,
