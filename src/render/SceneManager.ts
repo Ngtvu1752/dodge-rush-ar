@@ -1,6 +1,8 @@
 import * as THREE from 'three'
 import { DepthOcclusionPass } from './DepthOcclusionPass'
 import type { DepthMapData } from '../workers/AITypes'
+import type { RuntimeProfile } from '../workers/AITypes'
+import type { RuntimeCapabilitySummary } from '../utils/FeatureDetection'
 
 export class SceneManager {
   readonly scene: THREE.Scene
@@ -9,6 +11,8 @@ export class SceneManager {
   private videoTexture: THREE.VideoTexture | null = null
   private videoPlane: THREE.Mesh | null = null
   private occlusionPass: DepthOcclusionPass | null = null
+  private runtimeProfile: RuntimeProfile = 'balanced'
+  private capabilities: RuntimeCapabilitySummary | null = null
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer
@@ -42,6 +46,8 @@ export class SceneManager {
     this.videoTexture.minFilter = THREE.LinearFilter
     this.videoTexture.magFilter = THREE.LinearFilter
     this.videoTexture.format = THREE.RGBAFormat
+    this.videoTexture.generateMipmaps = false
+    this.videoTexture.colorSpace = THREE.SRGBColorSpace
     // Mirror horizontally to match mirrored webcam feed
     this.videoTexture.wrapS = THREE.RepeatWrapping
     this.videoTexture.repeat.x = -1
@@ -51,6 +57,7 @@ export class SceneManager {
     const material = new THREE.MeshBasicMaterial({
       map: this.videoTexture,
       depthWrite: false,
+      toneMapped: false,
     })
     this.videoPlane = new THREE.Mesh(geometry, material)
     this.videoPlane.position.set(w / 2, -h / 2, -500)
@@ -58,10 +65,12 @@ export class SceneManager {
   }
 
   enableOcclusion(): void {
+    if (this.capabilities && !this.capabilities.occlusionSupported) return
     if (this.occlusionPass) return
     const w = window.innerWidth
     const h = window.innerHeight
     this.occlusionPass = new DepthOcclusionPass(w, h)
+    this.occlusionPass.setHalfResolution(this.runtimeProfile === 'fallback')
   }
 
   disableOcclusion(): void {
@@ -73,6 +82,19 @@ export class SceneManager {
 
   get hasOcclusion(): boolean {
     return this.occlusionPass !== null
+  }
+
+  setRuntimeProfile(profile: RuntimeProfile, capabilities: RuntimeCapabilitySummary): void {
+    this.runtimeProfile = profile
+    this.capabilities = capabilities
+
+    if (!capabilities.occlusionSupported) {
+      this.disableOcclusion()
+      return
+    }
+
+    this.occlusionPass?.setHalfResolution(profile === 'fallback')
+    this.resize()
   }
 
   updateDepthMap(depthMap: DepthMapData): void {

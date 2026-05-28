@@ -129,9 +129,11 @@ export class CollisionSystem {
       if (overlap) {
         score.registerFail()
         wall.result = 'fail'
+        wall.resultCause = undefined
       } else {
         score.registerSuccess(BASE_POINTS_SUCCESS)
         wall.result = 'success'
+        wall.resultCause = 'dodge'
       }
       wall.resolved = true
     }
@@ -149,9 +151,11 @@ export class CollisionSystem {
       if (action.squat) {
         score.registerSuccess(BASE_POINTS_SUCCESS)
         laser.result = 'success'
+        laser.resultCause = 'dodge'
       } else {
         score.registerFail()
         laser.result = 'fail'
+        laser.resultCause = undefined
       }
       laser.resolved = true
     }
@@ -166,6 +170,7 @@ export class CollisionSystem {
     if (!orb.active && !orb.resolved) {
       score.registerMiss()
       orb.result = 'fail'
+      orb.resultCause = undefined
       orb.resolved = true
       return
     }
@@ -207,6 +212,7 @@ export class CollisionSystem {
     if (distLeft <= touchRadius || distRight <= touchRadius) {
       score.registerSuccess(BASE_POINTS_ORB)
       orb.result = 'success'
+      orb.resultCause = 'touch'
       orb.resolved = true
       orb.consume()
     }
@@ -262,9 +268,11 @@ export class CollisionSystem {
       if (distSq <= r * r) {
         score.registerFail()
         meteor.result = 'fail'
+        meteor.resultCause = undefined
       } else {
         score.registerSuccess(BASE_POINTS_SUCCESS)
         meteor.result = 'success'
+        meteor.resultCause = 'dodge'
       }
       meteor.resolved = true
     }
@@ -301,9 +309,11 @@ export class CollisionSystem {
 
         obstacle.resolved = true
         obstacle.result = 'success'
+        obstacle.resultCause = 'projectile'
         obstacle.active = false
         orb.hitTargetId = obstacle.id
         orb.result = 'success'
+        orb.resultCause = 'projectile'
         orb.resolved = true
         orb.active = false
         score.registerSuccess(THROWN_ORB_BONUS_POINTS)

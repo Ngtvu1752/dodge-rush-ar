@@ -13,9 +13,10 @@ interface Particle {
   r: number
   g: number
   b: number
+  gravity: number
 }
 
-export type ParticlePreset = 'success' | 'fail' | 'sparkle'
+export type ParticlePreset = 'success' | 'fail' | 'sparkle' | 'projectileHit' | 'wallBreak'
 
 const POOL_SIZE = 200
 
@@ -43,6 +44,22 @@ const PRESETS: Record<ParticlePreset, { count: number; speed: number; gravity: n
     life: 1.2,
     size: 4,
     colors: [[0.3, 0.5, 1], [0.5, 0.7, 1], [1, 1, 1]],
+  },
+  projectileHit: {
+    count: 32,
+    speed: 255,
+    gravity: 220,
+    life: 0.72,
+    size: 8,
+    colors: [[0.4, 0.75, 1], [0.75, 0.95, 1], [1, 1, 1]],
+  },
+  wallBreak: {
+    count: 42,
+    speed: 300,
+    gravity: 300,
+    life: 0.58,
+    size: 9,
+    colors: [[1, 0.2, 0.28], [1, 0.65, 0.65], [1, 1, 1]],
   },
 }
 
@@ -103,13 +120,14 @@ export class ParticleEmitter {
       const angle = Math.random() * Math.PI * 2
       const speed = config.speed * (0.5 + Math.random() * 0.5)
       const color = config.colors[Math.floor(Math.random() * config.colors.length)]
+      const upwardBias = preset === 'wallBreak' ? 0.35 : preset === 'projectileHit' ? 0.18 : 0
 
       this.particles.push({
         x: screenX,
         y: -screenY, // negate for Three.js Y-down
         z: 0,
         vx: Math.cos(angle) * speed,
-        vy: -Math.sin(angle) * speed, // negate for Three.js
+        vy: (-Math.sin(angle) - upwardBias) * speed, // negate for Three.js
         vz: (Math.random() - 0.5) * 50,
         life: config.life * (0.7 + Math.random() * 0.3),
         maxLife: config.life,
@@ -117,6 +135,7 @@ export class ParticleEmitter {
         r: color[0],
         g: color[1],
         b: color[2],
+        gravity: config.gravity,
       })
     }
   }
@@ -131,7 +150,7 @@ export class ParticleEmitter {
         continue
       }
 
-      p.vy += PRESETS.success.gravity * dt // gravity pulls down (positive = down in Three.js)
+      p.vy += p.gravity * dt // gravity pulls down (positive = down in Three.js)
       p.x += p.vx * dt
       p.y += p.vy * dt
       p.z += p.vz * dt

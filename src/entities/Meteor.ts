@@ -34,6 +34,7 @@ export class Meteor implements Obstacle {
   inHitZone = false
   graceStart = 0
   result: 'success' | 'fail' | null = null
+  resultCause: 'dodge' | 'projectile' | 'touch' | undefined = undefined
 
   /** Current rotation angles for spin animation (radians) */
   rotX = 0

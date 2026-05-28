@@ -26,6 +26,7 @@ export class ThrownOrb implements Obstacle {
   active = true
   resolved = false
   result: 'success' | 'fail' | null = null
+  resultCause: 'projectile' | 'dodge' | 'touch' | undefined = undefined
 
   worldX: number
   worldY: number

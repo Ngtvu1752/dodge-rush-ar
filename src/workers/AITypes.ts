@@ -2,6 +2,7 @@ import type { PoseData } from '../pose/PoseTypes'
 
 // ── Model types (ordered by priority: lower number = higher priority) ──
 export type ModelType = 'pose' | 'hands' | 'depth'
+export type RuntimeProfile = 'balanced' | 'fallback'
 
 // ── Hand tracking data (transferred from worker) ──
 export interface HandLandmark {
@@ -44,10 +45,16 @@ export interface AISetModelsCommand {
   models: Partial<Record<ModelType, boolean>>
 }
 
+export interface AISetRuntimeProfileCommand {
+  type: 'setRuntimeProfile'
+  profile: RuntimeProfile
+}
+
 export type AICommand =
   | { type: 'init' }
   | { type: 'destroy' }
   | AISetModelsCommand
+  | AISetRuntimeProfileCommand
 
 // ── Worker → Main thread: inference results ──
 export interface AIFrameResult {
@@ -64,12 +71,14 @@ export interface AIFrameResult {
 // ── Worker → Main thread: scheduler status (piggybacks on result) ──
 export interface AISchedulerStatus {
   type: 'schedulerStatus'
+  runtimeProfile: RuntimeProfile
   enabled: Record<ModelType, boolean>
   inferenceMs: Record<ModelType, number>
   lastTotalMs: number
   budgetExceeded: boolean
   modelsRan: ModelType[]
   modelsSkipped: ModelType[]
+  effectiveIntervalsMs: Record<ModelType, number>
 }
 
 // ── Worker → Main thread: lifecycle messages ──

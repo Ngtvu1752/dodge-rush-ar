@@ -8,6 +8,7 @@ import type {
   AIWorkerOutMessage,
   ModelType,
   AISetModelsCommand,
+  AISetRuntimeProfileCommand,
   DepthMapData,
   HandData,
 } from './AITypes'
@@ -292,6 +293,10 @@ async function handleSetModels(data: AISetModelsCommand): Promise<void> {
   }
 }
 
+function handleSetRuntimeProfile(data: AISetRuntimeProfileCommand): void {
+  scheduler.setRuntimeProfile(data.profile)
+}
+
 // ── Message handler ──
 self.onmessage = async (e: MessageEvent<AICommand | AIFrameRequest>) => {
   const data = e.data
@@ -317,6 +322,11 @@ self.onmessage = async (e: MessageEvent<AICommand | AIFrameRequest>) => {
 
   if (data.type === 'setModels') {
     await handleSetModels(data)
+    return
+  }
+
+  if (data.type === 'setRuntimeProfile') {
+    handleSetRuntimeProfile(data)
     return
   }
 

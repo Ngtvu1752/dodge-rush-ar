@@ -43,6 +43,7 @@ export class BlueOrb implements Obstacle {
   readonly radius: number
   graceStart = 0
   result: 'success' | 'fail' | null = null
+  resultCause: 'dodge' | 'projectile' | 'touch' | undefined = undefined
   interactionState: 'free' | 'candidate' | 'grabbed' | 'thrown' | 'consumed' = 'free'
   grabbedBy: 'left' | 'right' | null = null
 

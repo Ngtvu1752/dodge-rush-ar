@@ -1,27 +1,39 @@
-import type { ModelType, AISchedulerStatus } from './AITypes'
+import type { ModelType, AISchedulerStatus, RuntimeProfile } from './AITypes'
 
-// ── Priority: lower number = runs first ──
 const MODEL_PRIORITY: Record<ModelType, number> = {
   pose: 1,
   hands: 2,
   depth: 3,
 }
 
-// ── Minimum interval between runs for non-priority-1 models ──
-const MODEL_INTERVAL_MS: Record<ModelType, number> = {
-  pose: 0,      // Always run
-  hands: 20,    // ~50 FPS max
-  depth: 66,    // ~15 FPS max
+const PROFILE_SETTINGS: Record<RuntimeProfile, {
+  budgetMs: number
+  intervalMs: Record<ModelType, number>
+  depthIntervalHandsActiveMs: number
+}> = {
+  balanced: {
+    budgetMs: 45,
+    intervalMs: {
+      pose: 0,
+      hands: 20,
+      depth: 66,
+    },
+    depthIntervalHandsActiveMs: 110,
+  },
+  fallback: {
+    budgetMs: 36,
+    intervalMs: {
+      pose: 0,
+      hands: 33,
+      depth: 140,
+    },
+    depthIntervalHandsActiveMs: 180,
+  },
 }
-const DEPTH_INTERVAL_HANDS_ACTIVE_MS = 110
-
-// ── Budget: if last cycle exceeded this, skip lowest-priority model ──
-const INFERENCE_BUDGET_MS = 45
 
 interface ModelState {
   enabled: boolean
   priority: number
-  intervalMs: number
   lastRunTime: number
   lastInferenceMs: number
 }
@@ -30,27 +42,25 @@ export class InferenceScheduler {
   private models: Record<ModelType, ModelState>
   private lastTotalMs = 0
   private budgetExceeded = false
+  private runtimeProfile: RuntimeProfile = 'balanced'
 
   constructor() {
     this.models = {
       pose: {
         enabled: true,
         priority: MODEL_PRIORITY.pose,
-        intervalMs: MODEL_INTERVAL_MS.pose,
         lastRunTime: 0,
         lastInferenceMs: 0,
       },
       hands: {
         enabled: false,
         priority: MODEL_PRIORITY.hands,
-        intervalMs: MODEL_INTERVAL_MS.hands,
         lastRunTime: 0,
         lastInferenceMs: 0,
       },
       depth: {
         enabled: false,
         priority: MODEL_PRIORITY.depth,
-        intervalMs: MODEL_INTERVAL_MS.depth,
         lastRunTime: 0,
         lastInferenceMs: 0,
       },
@@ -61,17 +71,18 @@ export class InferenceScheduler {
     this.models[model].enabled = enabled
   }
 
-  /** Returns ordered list of models to run this cycle. */
+  setRuntimeProfile(profile: RuntimeProfile): void {
+    this.runtimeProfile = profile
+  }
+
   getNextBatch(timestamp: number): ModelType[] {
     const batch: ModelType[] = []
     const handsEnabled = this.models.hands.enabled
 
-    // Get all enabled models sorted by priority (pose first)
     const enabled = (Object.keys(this.models) as ModelType[])
-      .filter((m) => this.models[m].enabled)
+      .filter((model) => this.models[model].enabled)
       .sort((a, b) => this.models[a].priority - this.models[b].priority)
 
-    // Budget-aware: if last cycle exceeded budget, depth yields first while hands are active.
     let candidates = enabled
     if (this.budgetExceeded && enabled.length > 1) {
       candidates = handsEnabled
@@ -83,13 +94,11 @@ export class InferenceScheduler {
       const state = this.models[model]
       const intervalMs = this.getIntervalMs(model)
 
-      // Priority 1 (pose) always runs
       if (state.priority === 1) {
         batch.push(model)
         continue
       }
 
-      // Other models respect their interval
       if (timestamp - state.lastRunTime >= intervalMs) {
         batch.push(model)
       }
@@ -98,12 +107,7 @@ export class InferenceScheduler {
     return batch
   }
 
-  /** Record results from a completed inference cycle. */
-  recordResults(
-    modelsRan: ModelType[],
-    inferenceMs: Record<ModelType, number>,
-    timestamp: number,
-  ): void {
+  recordResults(modelsRan: ModelType[], inferenceMs: Record<ModelType, number>, timestamp: number): void {
     let total = 0
     for (const model of modelsRan) {
       const state = this.models[model]
@@ -111,14 +115,15 @@ export class InferenceScheduler {
       state.lastInferenceMs = inferenceMs[model]
       total += inferenceMs[model]
     }
+
     this.lastTotalMs = total
-    this.budgetExceeded = total > INFERENCE_BUDGET_MS
+    this.budgetExceeded = total > PROFILE_SETTINGS[this.runtimeProfile].budgetMs
   }
 
-  /** Build a status message for the main thread. */
   buildStatus(modelsRan: ModelType[], modelsSkipped: ModelType[]): AISchedulerStatus {
     return {
       type: 'schedulerStatus',
+      runtimeProfile: this.runtimeProfile,
       enabled: {
         pose: this.models.pose.enabled,
         hands: this.models.hands.enabled,
@@ -133,19 +138,25 @@ export class InferenceScheduler {
       budgetExceeded: this.budgetExceeded,
       modelsRan,
       modelsSkipped,
+      effectiveIntervalsMs: {
+        pose: this.getIntervalMs('pose'),
+        hands: this.getIntervalMs('hands'),
+        depth: this.getIntervalMs('depth'),
+      },
     }
   }
 
   get enabledModels(): ModelType[] {
-    return (Object.keys(this.models) as ModelType[])
-      .filter((m) => this.models[m].enabled)
+    return (Object.keys(this.models) as ModelType[]).filter((model) => this.models[model].enabled)
   }
 
   private getIntervalMs(model: ModelType): number {
+    const profileSettings = PROFILE_SETTINGS[this.runtimeProfile]
+
     if (model === 'depth' && this.models.hands.enabled) {
-      return DEPTH_INTERVAL_HANDS_ACTIVE_MS
+      return profileSettings.depthIntervalHandsActiveMs
     }
 
-    return this.models[model].intervalMs
+    return profileSettings.intervalMs[model]
   }
 }

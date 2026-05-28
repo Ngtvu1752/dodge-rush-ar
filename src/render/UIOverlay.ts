@@ -25,6 +25,7 @@ export type UIContext = {
   pinchStatus: string
   grabStatus: string
   throwReady: boolean
+  runtimeStatus: string
 }
 
 type FeedbackEntry = {

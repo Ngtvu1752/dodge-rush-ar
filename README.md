@@ -1,231 +1,138 @@
 # Dodge Rush AR
 
-Dodge Rush AR is a browser-based webcam AR motion game for laptops.  
-The player stands in front of a webcam and uses body movements as the main input method.
+Dodge Rush AR is a browser-based webcam AR arcade prototype built with TypeScript, Three.js, and MediaPipe Tasks Vision. The game uses mirrored camera input, body movement, and optional hand interaction to let the player dodge, squat, touch, grab, and throw against virtual obstacles.
 
-The game uses real-time pose tracking to detect body gestures such as dodging left, dodging right, squatting, and touching targets with hands. These gestures are used to avoid obstacles, collect targets, and score points.
+## Current V2 Scope
 
-## Project Goal
+The active V2 scope is complete through:
+- Stage A: worker-based AI inference foundation
+- Stage B: depth pipeline, occlusion, and z-axis obstacle movement
+- Stage C: hand interaction, pinch/grab/throw blue orbs
+- Stage D: runtime performance profiles, visual polish, and capability fallback/documentation
 
-The goal of this project is to build a complete motion-based AR arcade game prototype that demonstrates:
+Removed from scope:
+- tangible object tracking
+- weapon / shield prop systems
+- Stage D archived roadmap ideas (`V2-11..V2-13`)
 
-- webcam-based AR interaction
-- real-time human pose tracking
-- gesture recognition
-- body-based gameplay input
-- collision detection between body landmarks and virtual objects
-- arcade-style score, combo, health, and difficulty systems
-- gameplay evaluation for accuracy, latency, and fairness
+## Core Gameplay
 
-This project is intended as a personal portfolio project and a technical prototype inspired by motion-based arcade games such as Active Arcade, Kinect-style games, and Just Dance-style interaction.
+Body gameplay:
+- Move left or right to dodge red walls
+- Squat to avoid high lasers
+- Avoid meteors as they approach on the z-axis
 
-## Core Concept
+Orb gameplay:
+- Blue orbs can still score by touch when hands are unavailable
+- When hands are available, blue orbs become grab-first
+- Pinch near a blue orb to grab it
+- Release with speed to throw at RedWall or Meteor targets
+- Blue orb throws do not affect HighLaser
 
-The player sees their mirrored webcam feed on the screen.  
-Virtual obstacles and targets are rendered on top of the webcam image.
+## Main V2 Features
 
-The player must physically move their body to interact with the game:
+- Worker-based pose / hands / depth inference
+- Budget-aware inference scheduler with runtime profiles
+- Mirrored webcam scene with Three.js overlays
+- Depth map debug view and occlusion rendering
+- Z-axis obstacle projection for RedWall, HighLaser, BlueOrb, and Meteor
+- Hand landmarks, pinch detection, grab/release state machine, and throw velocity tracking
+- Hybrid blue orb interaction:
+  - hands available -> grab-first
+  - hands unavailable -> touch fallback
+- Thrown-orb collision against:
+  - RedWallLeft
+  - RedWallRight
+  - RedWallCenter
+  - Meteor
+- Projectile-specific VFX, popups, and HUD/debug feedback
+- Capability detection with balanced/fallback runtime profiles
 
-| Real Movement | Game Action |
-|---|---|
-| Move body left | Dodge left |
-| Move body right | Dodge right |
-| Squat | Avoid high laser |
-| Move hand into target | Touch blue orb |
-| Spread both arms | Activate shield, optional feature |
+## Controls
 
-## Core Gameplay Loop
+Gameplay / debug controls:
+- `Space`: start / continue / restart depending on game state
+- `C`: calibration / recalibration
+- `D`: debug overlay
+- `F`: depth debug overlay
+- `P`: toggle runtime profile (`balanced` / `fallback`)
 
-```text
-Start
-→ Camera permission
-→ Calibration
-→ Countdown
-→ Obstacles appear
-→ Player reacts with body movement
-→ Game evaluates success or failure
-→ Score, combo, and health update
-→ Difficulty increases over time
-→ Game over or timer ends
-→ Result screen
-→ Restart
-```
+Model toggles:
+- `1`: pose on/off
+- `2`: hands on/off
+- `3`: depth on/off
 
-## Main Features
+Spawn toggles:
+- `4`: RedWallLeft
+- `5`: RedWallRight
+- `6`: RedWallCenter
+- `7`: HighLaser
+- `8`: BlueOrb
+- `9`: Meteor
 
-### Required MVP Features
-- Webcam feed displayed on screen
-- Mirrored camera view
-- Real-time pose tracking
-- Pose landmark visualization in debug mode
-- Player calibration
-- Gesture detection:
-    - dodge left
-    - dodge right
-    - squat
-    - hand touch
-- Obstacle spawning
-- Collision and action evaluation
-- Score system
-- Combo system
-- Health system
-- Timer
-- Countdown
-- Game over screen
-- Result screen
-- Restart flow
+Dev helpers during gameplay:
+- `O`: spawn a debug BlueOrb
+- `S`: success popup test
+- `T`: hit popup test
+- `M`: miss popup test
 
-### Optional Features
-- Shield gesture
-- Yellow Gate obstacle
-- Coin Trail obstacle
-- Sound effects
-- Visual effects
-- Local best score
-- Exportable gameplay logs
-- Evaluation summary
+## Runtime Profiles and Fallback
 
-## Tech Stack
-- Vite
-- TypeScript
-- HTML Canvas 2D
-- MediaPipe Pose Landmarker
-- Browser Webcam API
-- LocalStorage for best score
-- Optional Web Audio API for simple sound effects
+The game currently exposes two runtime profiles:
+- `balanced`: primary desktop target
+- `fallback`: reduced optional load, depth deprioritized or disabled when needed
 
-### Recommended Development Stack
-```bash
-npm create vite@latest dodge-rush-ar -- --template vanilla-ts
-cd dodge-rush-ar
-npm install
-npm install @mediapipe/tasks-vision
-npm run dev
-```
+Capability detection reports whether the browser/runtime supports:
+- hands
+- depth
+- occlusion
+- the recommended runtime profile
+
+Fallback rules:
+- if hands are unavailable, V1-style blue orb touch remains valid
+- if depth / occlusion are unavailable, gameplay still runs without those visual layers
+- if runtime profile falls back, optional depth features yield before pose + hands interaction
+
+## Recommended Browser Target
+
+Primary target:
+- Chrome / Edge on desktop with webcam permission enabled
+
+Partial-support paths:
+- Firefox
+- Safari 17+
+
+See [docs/BROWSER_SUPPORT.md](docs/BROWSER_SUPPORT.md) for the current matrix.
 
 ## How to Run
+
 ```bash
 npm install
 npm run dev
 ```
-Then open the local development URL shown in the terminal.
+
 The app requires webcam permission.
 
-## How to Play
-1. Open the game in a browser.
-2. Allow webcam access.
-3. Stand around 1.5 to 2.5 meters away from the laptop.
-4. Make sure your upper body, hips, and hands are visible.
-5. Complete calibration by standing still.
-6. React to obstacles:
-    - Move left or right to dodge red walls.
-    - Squat to avoid high lasers.
-    - Touch blue orbs with either hand.
-7. Survive until the timer ends or until health reaches zero.
+## Manual Test References
 
-## Core Obstacles
-| Obstacle | Required Player Action | Result |
-|---|---|---|
-| Red Wall Left | Dodge right | Avoid damage |
-| Red Wall Right | Dodge left | Avoid damage |
-| High Laser | Squat | Avoid damage |
-| Blue Orb | Touch with hand | Gain score |
-| Yellow Gate | Spread both arms | Optional feature |
-| Coin Trail | Move body into coins | Optional feature |
+- [docs/ROADMAP_V2.md](docs/ROADMAP_V2.md)
+- [docs/BROWSER_SUPPORT.md](docs/BROWSER_SUPPORT.md)
+- [docs/EVALUATION.md](docs/EVALUATION.md)
 
-## Game Rules
+## Tech Stack
 
-### Health
-The player starts with 3 health points.
-The player loses 1 health point when failing to avoid:
-- Red Wall
-- High Laser
-- Yellow Gate, if implemented
-
-When health reaches 0, the game ends.
-
-### Score
-Suggested scoring:
-| Action | Points |
-|---|---|
-| Correct dodge | +100 |
-| Correct squat | +100 |
-| Blue Orb touch | +150 |
-| Shield gate success | +200 |
-| Coin collected | +25 |
-
-### Combo
-Each successful action increases combo by 1.
-The combo resets when:
-- the player fails an obstacle
-- the player misses an important action
-- the player is hit
-
-Suggested multiplier:
-- Combo 0-9: x1.0
-- Combo 10-19: x1.5
-- Combo 20+: x2.0
-
-## Development Phases
-1. Project setup
-2. Webcam rendering
-3. Pose tracking
-4. Debug skeleton
-5. Pose smoothing
-6. Calibration
-7. Gesture detection
-8. Game state machine
-9. Score, combo, and health
-10. Obstacle system
-11. Collision system
-12. UI overlay
-13. Difficulty scaling
-14. Evaluation logger
-15. Polish and documentation
-
-See `docs/ROADMAP.md` for the full development checklist.
-
-## Documentation
-- `docs/GAME_DESIGN.md` — game design and mechanics
-- `docs/TECHNICAL_PLAN.md` — technical architecture and modules
-- `docs/ROADMAP.md` — step-by-step implementation roadmap
-- `docs/AI_AGENT_INSTRUCTIONS.md` — rules for Claude Code or AI coding agents
-- `docs/EVALUATION.md` — gameplay evaluation plan
-
-## Evaluation
-This project does not benchmark MediaPipe Pose Landmarker as a machine learning research model.
-Instead, the evaluation focuses on whether the pose tracking and gesture recognition are reliable enough for fair gameplay.
-Key evaluation metrics:
-- gesture accuracy
-- false positive rate
-- false negative rate
-- render FPS
-- pose detection FPS
-- perceived input latency
-- player-perceived fairness
-
-See `docs/EVALUATION.md` for details.
+- Vite
+- TypeScript
+- Three.js
+- MediaPipe Tasks Vision
+- HTML Canvas / DOM UI overlays
+- Browser Webcam API
+- GSAP
 
 ## Known Limitations
-- Webcam tracking quality depends on lighting and camera position.
-- Laptop webcams may not capture the full body if the player is too close.
-- Squat and hand detection may require threshold tuning.
-- The game is designed for one player only.
-- The game is not a full 3D AR experience; it is a webcam-based AR overlay game.
 
-## Future Improvements
-- Add Yellow Gate and shield gesture
-- Add Coin Trail
-- Add sound effects and particles
-- Add local leaderboard
-- Add multiple difficulty levels
-- Add tutorial mode
-- Add multiplayer mode
-- Add better pose confidence handling
-- Add replay or session analytics
-
-## Portfolio Summary
-Dodge Rush AR demonstrates a complete real-time body interaction game pipeline:
-Webcam input → Pose tracking → Pose smoothing → Calibration → Gesture detection → Collision evaluation → Game state update → Rendering and feedback.
-
-The project focuses on creating a playable and fair motion-based game experience using only a laptop webcam.
+- Webcam quality varies heavily by laptop camera, browser, and lighting
+- Advanced webcam tuning constraints are browser/device dependent and may be ignored
+- Firefox / Safari support for depth and occlusion should be treated as verify-on-device, not assumed full parity
+- Hand tracking quality still depends on framing, lighting, and motion blur
+- This remains a webcam AR overlay game, not world-tracked AR

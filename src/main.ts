@@ -20,11 +20,13 @@ import { ScreenShake } from './render/vfx/ScreenShake'
 import { FeedbackPopup } from './render/vfx/FeedbackPopup'
 import { GrabIndicator } from './render/vfx/GrabIndicator'
 import { BASE_POINTS_SUCCESS, MAX_HEALTH } from './config/gameConfig'
-import type { ModelType } from './workers/AITypes'
+import type { ModelType, RuntimeProfile } from './workers/AITypes'
 import { DebugDepthMap } from './render/DebugDepthMap'
 import { ObstacleType } from './entities/Obstacle'
 import type { BlueOrb } from './entities/BlueOrb'
 import type { TrackedHandState } from './input/HandTracker'
+import { detectRuntimeCapabilities } from './utils/FeatureDetection'
+import { PerformanceMonitor } from './utils/PerformanceMonitor'
 
 const obstacleToggleKeys = {
   '4': { type: ObstacleType.RedWallLeft, label: 'RedWallLeft' },
@@ -58,11 +60,14 @@ const handTracker = new HandTracker()
 const game = new GameManager()
 const debugDepthMap = new DebugDepthMap()
 const grabIndicator = new GrabIndicator(sceneManager.scene)
+const runtimeCapabilities = detectRuntimeCapabilities()
+const performanceMonitor = new PerformanceMonitor()
 
 let debugMode = false
 let lastTimestamp = 0
 let loadingMessage = ''
 let loadingError = ''
+let runtimeProfile: RuntimeProfile = runtimeCapabilities.recommendedProfile
 
 const HAND_DEBUG_EVENT_TTL_MS = 240
 
@@ -76,12 +81,22 @@ type ThrownOrbDebugPulse = {
   until: number
 }
 
+type ProjectileTargetDebugPulse = {
+  label: 'RedWallLeft' | 'RedWallRight' | 'RedWallCenter' | 'Meteor' | 'none'
+  until: number
+}
+
 const handDebugPulse: Record<'left' | 'right', HandDebugPulse> = {
   left: { label: '-', until: 0 },
   right: { label: '-', until: 0 },
 }
 
 const thrownOrbDebugPulse: ThrownOrbDebugPulse = {
+  label: 'none',
+  until: 0,
+}
+
+const projectileTargetDebugPulse: ProjectileTargetDebugPulse = {
   label: 'none',
   until: 0,
 }
@@ -156,6 +171,49 @@ function getThrownOrbDebugLabel(timestamp: number): ThrownOrbDebugPulse['label']
   return 'none'
 }
 
+function getRuntimeStatusLabel(): string {
+  const occlusion = runtimeCapabilities.occlusionSupported ? 'OCCLUSION' : 'NO-OCCLUSION'
+  const suffix = runtimeCapabilities.fallbackReason !== 'none'
+    ? `  ${runtimeCapabilities.fallbackReason}`
+    : ''
+  return `Runtime: ${runtimeProfile.toUpperCase()}  ${occlusion}${suffix}`
+}
+
+function getCapabilityStatusLabel(): string {
+  return `${runtimeCapabilities.capabilityLabel} | profile=${runtimeProfile}`
+}
+
+function applyRuntimeProfile(): void {
+  aiWorkerManager.setRuntimeProfile(runtimeProfile)
+  sceneManager.setRuntimeProfile(runtimeProfile, runtimeCapabilities)
+
+  if (runtimeProfile === 'fallback' && modelEnabled.depth) {
+    modelEnabled.depth = false
+    aiWorkerManager.setModels({ depth: false })
+    sceneManager.disableOcclusion()
+    console.info('[Runtime] Fallback profile disabled depth for stability.')
+  }
+}
+
+function cycleRuntimeProfile(): void {
+  runtimeProfile = runtimeProfile === 'balanced' ? 'fallback' : 'balanced'
+  applyRuntimeProfile()
+  console.info(`[Runtime] Profile: ${runtimeProfile.toUpperCase()}`)
+}
+
+function updateProjectileTargetDebugPulse(label: ProjectileTargetDebugPulse['label'], timestamp: number): void {
+  projectileTargetDebugPulse.label = label
+  projectileTargetDebugPulse.until = timestamp + 900
+}
+
+function getProjectileTargetDebugLabel(timestamp: number): ProjectileTargetDebugPulse['label'] {
+  if (projectileTargetDebugPulse.until > timestamp) {
+    return projectileTargetDebugPulse.label
+  }
+
+  return 'none'
+}
+
 // V2 model toggle state
 const modelEnabled: Record<ModelType, boolean> = {
   pose: true,
@@ -171,8 +229,9 @@ camera.init().then((ok) => {
     return
   }
   sceneManager.setBackgroundVideo(camera.getVideo())
+  sceneManager.setRuntimeProfile(runtimeProfile, runtimeCapabilities)
 
-  loadingMessage = 'Loading AI models (first time may take a few seconds)...'
+  loadingMessage = `Loading AI models (first time may take a few seconds)...\n${getCapabilityStatusLabel()}`
 
   aiWorkerManager.init().then((loaded) => {
     if (!loaded) {
@@ -180,8 +239,9 @@ camera.init().then((ok) => {
       console.error(loadingError)
       return
     }
-    loadingMessage = ''
+    loadingMessage = getCapabilityStatusLabel()
     poseTracker.attach(aiWorkerManager)
+    applyRuntimeProfile()
     game.startCalibration()
   }).catch((err) => {
     loadingError = `AI worker crashed: ${err instanceof Error ? err.message : String(err)}`
@@ -225,11 +285,19 @@ window.addEventListener('keydown', (e) => {
     console.info(`[Scheduler] Pose: ${modelEnabled.pose ? 'ON' : 'OFF'}`)
   }
   if (e.key === '2') {
+    if (!runtimeCapabilities.handsSupported) {
+      console.info('[Runtime] Hands unsupported on this browser/runtime.')
+      return
+    }
     modelEnabled.hands = !modelEnabled.hands
     aiWorkerManager.setModels({ hands: modelEnabled.hands })
     console.info(`[Scheduler] Hands: ${modelEnabled.hands ? 'ON' : 'OFF'}`)
   }
   if (e.key === '3') {
+    if (!runtimeCapabilities.depthSupported || !runtimeCapabilities.occlusionSupported) {
+      console.info('[Runtime] Depth/Occlusion unsupported on this browser/runtime.')
+      return
+    }
     modelEnabled.depth = !modelEnabled.depth
     aiWorkerManager.setModels({ depth: modelEnabled.depth })
     if (modelEnabled.depth) {
@@ -240,6 +308,9 @@ window.addEventListener('keydown', (e) => {
     console.info(`[Scheduler] Depth: ${modelEnabled.depth ? 'ON' : 'OFF'}`)
   }
 
+  if (e.key === 'p' || e.key === 'P') {
+    cycleRuntimeProfile()
+  }
   if (e.key in obstacleToggleKeys) {
     const toggle = obstacleToggleKeys[e.key as keyof typeof obstacleToggleKeys]
     const enabled = game.toggleSpawnType(toggle.type)
@@ -253,19 +324,19 @@ window.addEventListener('keydown', (e) => {
   }
 
   // Dev-only test controls (temporary, not real gameplay)
-  if (state === GameState.Playing) {
-    if (e.key === 's' || e.key === 'S') {
-      game.score.registerSuccess(BASE_POINTS_SUCCESS)
-      feedbackPopup.show('DODGED!', '#00ff88')
-    }
-    if (e.key === 't' || e.key === 'T') {
-      game.score.registerFail()
-      feedbackPopup.show('HIT!', '#ff4444')
-    }
-    if (e.key === 'm' || e.key === 'M') {
-      game.score.registerMiss()
-      feedbackPopup.show('MISS', '#ff8844')
-    }
+    if (state === GameState.Playing) {
+      if (e.key === 's' || e.key === 'S') {
+        game.score.registerSuccess(BASE_POINTS_SUCCESS)
+        feedbackPopup.show('DODGED!', '#00ff88', undefined, undefined, { fontSizeRem: 2.1, travelY: -90 })
+      }
+      if (e.key === 't' || e.key === 'T') {
+        game.score.registerFail()
+        feedbackPopup.show('HIT!', '#ff4444', undefined, undefined, { fontSizeRem: 2.2, travelY: -75, glowColor: '#ff8a8a' })
+      }
+      if (e.key === 'm' || e.key === 'M') {
+        game.score.registerMiss()
+        feedbackPopup.show('MISS', '#ff8844', undefined, undefined, { fontSizeRem: 1.8, travelY: -70 })
+      }
     if (e.key === 'o' || e.key === 'O') {
       if (!game.debugSpawnBlueOrb()) {
         console.info('[Spawn Toggle] BlueOrb is OFF, debug spawn skipped.')
@@ -301,6 +372,7 @@ function buildUIContext(): UIContext {
     pinchStatus: `L:${handTracker.left.phase} R:${handTracker.right.phase}`,
     grabStatus: activeGrab ? `Grabbed by ${activeGrab.grabbedBy}` : 'No grab',
     throwReady: handTracker.left.canThrow || handTracker.right.canThrow,
+    runtimeStatus: getRuntimeStatusLabel(),
   }
 }
 
@@ -334,6 +406,8 @@ function gameLoop(timestamp: number) {
     debugDepthMap.draw(depthMap)
     sceneManager.updateDepthMap(depthMap)
   }
+
+  performanceMonitor.update(timestamp, aiWorkerManager.lastSchedulerStatus, runtimeProfile)
 
   if (debugMode) {
     debugSkeleton.draw(renderer, pose, hands, handTracker.states)
@@ -378,34 +452,74 @@ function gameLoop(timestamp: number) {
           const rawY = o.y + o.height / 2
           const { x: screenX, y: screenY } = clampFeedbackPosition(rawX, rawY)
 
-          if (o.result === 'success') {
-            if (o.type === 'BlueOrb') {
-              feedbackPopup.show('TOUCHED!', '#00ff88', screenX, screenY)
-              particleEmitter.burst(screenX, screenY, 'sparkle')
-            } else if (o.type === ObstacleType.ThrownOrb) {
-              feedbackPopup.show('BULLSEYE!', '#66ccff', screenX, screenY)
-              particleEmitter.burst(screenX, screenY, 'sparkle')
-              updateThrownOrbDebugPulse('BULLSEYE', timestamp)
-            } else if (o.type === 'HighLaser') {
-              feedbackPopup.show('SQUAT OK', '#00ff88', screenX, screenY)
-              particleEmitter.burst(screenX, screenY, 'success')
-            } else {
-              feedbackPopup.show('DODGED!', '#00ff88', screenX, screenY)
-              particleEmitter.burst(screenX, screenY, 'success')
+            if (o.result === 'success') {
+              if (o.type === 'BlueOrb') {
+                feedbackPopup.show('TOUCHED!', '#3ff5a6', screenX, screenY, {
+                  fontSizeRem: 1.85,
+                  travelY: -78,
+                  glowColor: '#bffff0',
+                })
+                particleEmitter.burst(screenX, screenY, 'sparkle')
+              } else if (o.type === ObstacleType.ThrownOrb) {
+                feedbackPopup.show('BULLSEYE!', '#7fd6ff', screenX, screenY, {
+                  fontSizeRem: 2.3,
+                  travelY: -118,
+                  glowColor: '#d6f3ff',
+                  letterSpacingPx: 1.8,
+                })
+                particleEmitter.burst(screenX, screenY, 'projectileHit')
+                updateThrownOrbDebugPulse('BULLSEYE', timestamp)
+              } else if (o.type === 'HighLaser') {
+                feedbackPopup.show('SQUAT OK', '#00ff88', screenX, screenY, {
+                  fontSizeRem: 1.8,
+                  travelY: -82,
+                })
+                particleEmitter.burst(screenX, screenY, 'success')
+              } else if (o.resultCause === 'projectile') {
+                const hitLabel = o.type === 'Meteor' ? 'METEOR DOWN' : 'WALL BREAK'
+                const popupColor = o.type === 'Meteor' ? '#ffbf7a' : '#ff8d9c'
+                feedbackPopup.show(hitLabel, popupColor, screenX, screenY, {
+                  fontSizeRem: o.type === 'Meteor' ? 2.1 : 2.25,
+                  travelY: -108,
+                  glowColor: o.type === 'Meteor' ? '#ffe2bf' : '#ffd3da',
+                  letterSpacingPx: 1.6,
+                })
+                particleEmitter.burst(screenX, screenY, o.type === 'Meteor' ? 'projectileHit' : 'wallBreak')
+                if (o.type === ObstacleType.RedWallLeft || o.type === ObstacleType.RedWallRight || o.type === ObstacleType.RedWallCenter || o.type === ObstacleType.Meteor) {
+                  updateProjectileTargetDebugPulse(o.type, timestamp)
+                }
+              } else {
+                feedbackPopup.show('DODGED!', '#00ff88', screenX, screenY, {
+                  fontSizeRem: 1.95,
+                  travelY: -86,
+                })
+                particleEmitter.burst(screenX, screenY, 'success')
+              }
+            } else if (o.result === 'fail') {
+              if (o.type === 'BlueOrb') {
+                feedbackPopup.show('MISS', '#ff8844', screenX, screenY, {
+                  fontSizeRem: 1.65,
+                  travelY: -68,
+                })
+              } else if (o.type === ObstacleType.ThrownOrb) {
+                feedbackPopup.show('THROW MISS', '#8dbfe6', screenX, screenY, {
+                  fontSizeRem: 1.75,
+                  travelY: -72,
+                  glowColor: '#d4ecff',
+                })
+                updateThrownOrbDebugPulse('MISS', timestamp)
+              } else {
+                feedbackPopup.show('HIT!', '#ff4444', screenX, screenY, {
+                  fontSizeRem: 2.15,
+                  travelY: -72,
+                  glowColor: '#ffb1b1',
+                })
+                particleEmitter.burst(screenX, screenY, 'fail')
+                screenShake.shake(8)
+              }
             }
-          } else if (o.result === 'fail') {
-            if (o.type === 'BlueOrb') {
-              feedbackPopup.show('MISS', '#ff8844', screenX, screenY)
-            } else if (o.type === ObstacleType.ThrownOrb) {
-              feedbackPopup.show('THROW MISS', '#66ccff', screenX, screenY)
-              updateThrownOrbDebugPulse('MISS', timestamp)
-            } else {
-              feedbackPopup.show('HIT!', '#ff4444', screenX, screenY)
-              particleEmitter.burst(screenX, screenY, 'fail')
-              screenShake.shake(8)
-            }
-          }
           o.result = null  // Clear after showing
+          o.resultCause = undefined
         }
       }
 
@@ -422,8 +536,12 @@ function gameLoop(timestamp: number) {
         const thrownOrbs = game.getThrownOrbs()
         const blueOrbTouchPolicy = game.getBlueOrbTouchPolicy()
         const spawnEnabled = game.getSpawnEnabled()
+        const performanceSnapshot = performanceMonitor.getSnapshot()
+        const schedulerStatus = aiWorkerManager.lastSchedulerStatus
 
         const lines = [
+          `runtime=${runtimeProfile} fallback=${runtimeCapabilities.fallbackReason} fps=${performanceSnapshot.fps.toFixed(1)} frame=${performanceSnapshot.frameMs.toFixed(1)}ms`,
+          `caps hands=${runtimeCapabilities.handsSupported} depth=${runtimeCapabilities.depthSupported} occ=${runtimeCapabilities.occlusionSupported}`,
           `Difficulty: ${game.difficulty.level}`,
           `Speed: ${game.difficulty.speed}  Interval: ${game.difficulty.spawnInterval.toFixed(1)}s`,
           `offset=${offset.toFixed(3)}  drop=${drop.toFixed(3)}`,
@@ -433,7 +551,7 @@ function gameLoop(timestamp: number) {
           `R:${rightHand.phase} conf=${rightHand.confidence.toFixed(2)} pinch=${rightHand.pinchDistance.toFixed(3)} speed=${rightHand.speed.toFixed(0)} throw=${rightHand.canThrow}`,
           `grab=${activeGrab ? activeGrab.grabbedBy : 'none'} ready=${leftHand.canThrow || rightHand.canThrow}`,
           `orbTouch=${blueOrbTouchPolicy.allowTouch ? 'fallback' : 'grab-first'} suppressedOrbs=${blueOrbTouchPolicy.suppressTouchForOrbIds.size}`,
-          `thrown=${thrownOrbs.length} lastThrow=${getThrownOrbDebugLabel(timestamp)}`,
+          `thrown=${thrownOrbs.length} lastThrow=${getThrownOrbDebugLabel(timestamp)} lastHitTarget=${getProjectileTargetDebugLabel(timestamp)}`,
           `spawn [4]L=${spawnEnabled.RedWallLeft ? 'ON' : 'OFF'} [5]R=${spawnEnabled.RedWallRight ? 'ON' : 'OFF'} [6]C=${spawnEnabled.RedWallCenter ? 'ON' : 'OFF'}`,
           `spawn [7]Laser=${spawnEnabled.HighLaser ? 'ON' : 'OFF'} [8]Orb=${spawnEnabled.BlueOrb ? 'ON' : 'OFF'} [9]Meteor=${spawnEnabled.Meteor ? 'ON' : 'OFF'}`,
         ]
@@ -447,18 +565,18 @@ function gameLoop(timestamp: number) {
         })
 
         // V2 Scheduler debug overlay
-        const ss = aiWorkerManager.lastSchedulerStatus
         const schedulerLines = [
-          `── AI Scheduler [1]pose:${modelEnabled.pose ? 'ON' : 'OFF'} [2]hands:${modelEnabled.hands ? 'ON' : 'OFF'} [3]depth:${modelEnabled.depth ? 'ON' : 'OFF'} ──`,
-          `ran: ${ss?.modelsRan.join('+') ?? '—'}  skipped: ${ss?.modelsSkipped.join('+') ?? '—'}`,
-          `pose: ${(ss?.inferenceMs.pose ?? 0).toFixed(1)}ms  hands: ${(ss?.inferenceMs.hands ?? 0).toFixed(1)}ms  depth: ${(ss?.inferenceMs.depth ?? 0).toFixed(1)}ms`,
-          `total: ${(ss?.lastTotalMs ?? 0).toFixed(1)}ms  budget exceeded: ${ss?.budgetExceeded ?? false}`,
+          `AI Scheduler [1]pose=${modelEnabled.pose ? 'ON' : 'OFF'} [2]hands=${modelEnabled.hands ? 'ON' : 'OFF'} [3]depth=${modelEnabled.depth ? 'ON' : 'OFF'} [P]profile=${runtimeProfile}`,
+          `ran: ${schedulerStatus?.modelsRan.join('+') ?? '-'}  skipped: ${schedulerStatus?.modelsSkipped.join('+') ?? '-'}`,
+          `pose: ${(schedulerStatus?.inferenceMs.pose ?? 0).toFixed(1)}ms  hands: ${(schedulerStatus?.inferenceMs.hands ?? 0).toFixed(1)}ms  depth: ${(schedulerStatus?.inferenceMs.depth ?? 0).toFixed(1)}ms`,
+          `total: ${(schedulerStatus?.lastTotalMs ?? 0).toFixed(1)}ms  budget exceeded: ${schedulerStatus?.budgetExceeded ?? false}`,
+          `intervals pose=${schedulerStatus?.effectiveIntervalsMs.pose ?? 0} hands=${schedulerStatus?.effectiveIntervalsMs.hands ?? 0} depth=${schedulerStatus?.effectiveIntervalsMs.depth ?? 0}`,
         ]
         const baseY = 86 + lines.length * 18 + 10
         schedulerLines.forEach((line, i) => {
           renderer.drawText(line, 10, baseY + i * 18, {
             size: 14,
-            color: ss?.budgetExceeded ? '#ff8844' : '#00ccff',
+            color: schedulerStatus?.budgetExceeded ? '#ff8844' : '#00ccff',
             align: 'left',
             baseline: 'top',
           })

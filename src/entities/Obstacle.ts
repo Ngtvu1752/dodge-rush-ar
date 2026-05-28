@@ -26,6 +26,7 @@ export interface Obstacle {
   active: boolean
   resolved: boolean
   result: 'success' | 'fail' | null
+  resultCause?: 'dodge' | 'projectile' | 'touch'
   update(dt: number): void
   render(renderer: Renderer): void
 }

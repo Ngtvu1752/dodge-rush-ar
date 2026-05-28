@@ -438,7 +438,9 @@ BlueOrb interaction policy for Stage C should be hybrid but prioritized: if hand
 
 ## 5. Tangible Object Tracking
 
-### 5.1 Approach: Color-Based Tracking (Recommended)
+Stage D tangible-object tracking is explicitly descoped from the current V2 release. The subsections below are retained only as archived design notes and are not part of the active implementation plan.
+
+### 5.1 Approach: Color-Based Tracking (Archived)
 
 For tracking a physical colored object (e.g., a bright green ball, orange controller), **color-based tracking in HSV space** is the most reliable and performant approach. It doesn't require a trained model and runs in ~2-5ms.
 
@@ -451,7 +453,7 @@ For tracking a physical colored object (e.g., a bright green ball, orange contro
 - OpenCV.js is 8MB+ and adds significant bundle size
 - The color tracking algorithm is simple enough to implement in ~50 lines of vanilla JS
 
-### 5.2 Color Tracking Algorithm
+### 5.2 Color Tracking Algorithm (Archived)
 
 ```typescript
 interface TrackedObject {
@@ -496,7 +498,7 @@ function trackColorObject(
 }
 ```
 
-### 5.3 Weapon/Shield Mapping
+### 5.3 Weapon/Shield Mapping (Archived)
 
 The tracked object's position and orientation determine where the 3D weapon renders:
 
@@ -515,7 +517,7 @@ Physical object (tracked via color)
 - **Sword**: Slash through High Lasers to destroy them
 - **Wand**: Enhanced Blue Orb throwing (larger grab radius, homing)
 
-### 5.4 Calibration Flow
+### 5.4 Calibration Flow (Archived)
 
 The player must calibrate the tracked object before use:
 

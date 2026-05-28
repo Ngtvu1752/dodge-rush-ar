@@ -5,6 +5,15 @@ interface FeedbackEntry {
   timeline: gsap.core.Timeline
 }
 
+type FeedbackPopupOptions = {
+  fontSizeRem?: number
+  travelY?: number
+  duration?: number
+  glowColor?: string
+  weight?: number
+  letterSpacingPx?: number
+}
+
 export class FeedbackPopup {
   private root: HTMLElement
   private entries: FeedbackEntry[] = []
@@ -13,7 +22,16 @@ export class FeedbackPopup {
     this.root = root
   }
 
-  show(text: string, color: string, x?: number, y?: number): void {
+  show(text: string, color: string, x?: number, y?: number, options?: FeedbackPopupOptions): void {
+    const {
+      fontSizeRem = 2,
+      travelY = -100,
+      duration = 1.0,
+      glowColor = color,
+      weight = 900,
+      letterSpacingPx = 1.2,
+    } = options ?? {}
+
     const el = document.createElement('div')
     el.textContent = text
     el.style.cssText = `
@@ -23,9 +41,10 @@ export class FeedbackPopup {
       transform: translate(-50%, -50%);
       color: ${color};
       font-family: 'Nunito', 'Segoe UI', system-ui, sans-serif;
-      font-weight: 900;
-      font-size: 2rem;
-      text-shadow: 0 0 15px ${color}, 0 2px 4px rgba(0,0,0,0.8);
+      font-weight: ${weight};
+      font-size: ${fontSizeRem}rem;
+      letter-spacing: ${letterSpacingPx}px;
+      text-shadow: 0 0 18px ${glowColor}, 0 2px 4px rgba(0,0,0,0.8);
       pointer-events: none;
       white-space: nowrap;
       z-index: 100;
@@ -35,22 +54,22 @@ export class FeedbackPopup {
     const tl = gsap.timeline({
       onComplete: () => {
         el.remove()
-        this.entries = this.entries.filter((e) => e.element !== el)
+        this.entries = this.entries.filter((entry) => entry.element !== el)
       },
     })
 
-    // Bounce in, float up, fade out
     tl.from(el, {
-      scale: 0.3,
-      duration: 0.15,
-      ease: 'back.out(3)',
+      scale: 0.28,
+      opacity: 0,
+      duration: 0.16,
+      ease: 'back.out(3.2)',
     })
     tl.to(el, {
-      y: -100,
+      y: travelY,
       opacity: 0,
-      duration: 1.0,
+      duration,
       ease: 'power1.out',
-    }, 0.1)
+    }, 0.08)
 
     this.entries.push({ element: el, timeline: tl })
   }

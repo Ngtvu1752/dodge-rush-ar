@@ -64,6 +64,7 @@ export class RedWallLeft implements Obstacle {
   inHitZone = false
   graceStart = 0
   result: 'success' | 'fail' | null = null
+  resultCause: 'dodge' | 'projectile' | 'touch' | undefined = undefined
   private canvasW: number
   private canvasH: number
 
@@ -162,6 +163,7 @@ export class RedWallRight implements Obstacle {
   inHitZone = false
   graceStart = 0
   result: 'success' | 'fail' | null = null
+  resultCause: 'dodge' | 'projectile' | 'touch' | undefined = undefined
   private canvasW: number
   private canvasH: number
 
@@ -260,6 +262,7 @@ export class RedWallCenter implements Obstacle {
   inHitZone = false
   graceStart = 0
   result: 'success' | 'fail' | null = null
+  resultCause: 'dodge' | 'projectile' | 'touch' | undefined = undefined
   private canvasW: number
   private canvasH: number
 

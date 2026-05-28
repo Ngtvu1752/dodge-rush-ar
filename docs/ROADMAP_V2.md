@@ -4,7 +4,7 @@
 
 This roadmap defines the strict, sequential build order for V2. Each phase builds on the previous one. **Do not skip phases or implement features out of order.**
 
-V2 is organized into **4 stages** spanning **16 phases**. Each phase has clear deliverables, acceptance criteria, and manual test procedures.
+V2 is organized into **4 active stages** spanning **13 phases**. Each phase has clear deliverables, acceptance criteria, and manual test procedures.
 
 ---
 
@@ -479,29 +479,32 @@ Implementation note: the current codebase already contains a partial grab/throw 
 
 | File | Action | Description |
 |---|---|---|
-| `src/render/entities/ThrownOrbVisual.ts` | Modify | Add motion trail (line renderer), spin animation, impact particles |
-| `src/render/vfx/GrabIndicator.ts` | Create | Visual feedback when hand is near a grabbable orb (pulsing ring) |
-| `src/entities/ThrownOrb.ts` | Modify | Add wall bouncing, screen-edge clamping |
-| `src/input/HandTracker.ts` | Modify | Add grab cooldown to prevent double-grab bugs |
-| `src/collision/CollisionSystem.ts` | Modify | Add thrown-orb-vs-laser collision (bonus: laser deflection) |
+| `src/render/entities/ThrownOrbVisual.ts` | Modify | Final polish for trail, spin readability, and impact response |
+| `src/render/vfx/GrabIndicator.ts` | Modify | Tune affordance so near-orb grab intent is clearer |
+| `src/entities/ThrownOrb.ts` | Modify | Clamp or expire trajectories cleanly at screen bounds |
+| `src/input/HandTracker.ts` | Modify | Final debounce/cooldown tuning to avoid rapid re-grab |
+| `src/render/entities/RedWallVisual.ts` | Modify | Add projectile-specific wall-break reaction distinct from ordinary dodge success |
+| `src/main.ts` | Modify | Add final hand/throw HUD polish for testability |
 
 **Acceptance Criteria**:
 - [ ] Grab indicator appears when hand is within grab radius of an orb
 - [ ] Thrown orb has a visible motion trail
 - [ ] Thrown orb spins during flight
-- [ ] Impact particles on wall hit
-- [ ] No double-grab bugs (cooldown between grab/release cycles)
-- [ ] Thrown orbs don't clip through screen edges
+- [ ] Impact feedback on thrown hit is visually distinct and readable
+- [ ] No rapid re-grab bugs after release
+- [ ] Thrown orbs expire or clamp cleanly instead of drifting into unreadable space
+- [ ] BlueOrb throws do not affect HighLaser; projectile targets remain RedWall and Meteor only
+- [ ] HUD/debug clearly shows active grab, throw readiness, and throw outcome
 
 ---
 
-## STAGE D: Tangible Object Tracking & Integration
+## Stage D Decision
 
-**Goal**: Track a physical colored object as a weapon/shield for interacting with virtual obstacles.
+Stage D (tangible object tracking / weapon integration) is explicitly **removed from scope** for the current V2 release. The notes below are retained only as archived ideas and are not part of the active delivery plan.
 
 ---
 
-### Phase V2-11: Color Object Tracking
+### Phase V2-11: Color Object Tracking (Archived / Removed)
 
 **Objective**: Implement real-time color-based object tracking using HSV blob detection.
 
@@ -540,7 +543,7 @@ The color tracker runs on the **main thread** (not the worker) because:
 
 ---
 
-### Phase V2-12: Tangible Weapon Mapping
+### Phase V2-12: Tangible Weapon Mapping (Archived / Removed)
 
 **Objective**: Map the tracked physical object to a 3D weapon/shield that interacts with virtual obstacles.
 
@@ -586,7 +589,7 @@ Sword Mode (activated by fast horizontal movement):
 
 ---
 
-### Phase V2-13: Game Mode Integration
+### Phase V2-13: Game Mode Integration (Archived / Removed)
 
 **Objective**: Integrate all V2 mechanics into a cohesive game mode with proper state flow and difficulty scaling.
 
@@ -619,152 +622,142 @@ Sword Mode (activated by fast horizontal movement):
 
 ---
 
-## STAGE E: Polish & Optimization
+## STAGE D: Polish & Optimization
 
-**Goal**: Performance optimization, visual polish, and cross-browser testing.
+**Goal**: Stabilize performance, tighten presentation quality, and formalize capability fallback/documentation for the shippable V2 scope.
 
 ---
 
-### Phase V2-14: Performance Optimization
+### Phase V2-14: Runtime Performance Profiles
 
-**Objective**: Profile and optimize to meet all V2 performance targets.
+**Objective**: Add practical runtime profiling and capability-driven presets so V2 stays playable across stronger and weaker devices without inventing a second rendering architecture.
 
 **Deliverables**:
 
 | File | Action | Description |
 |---|---|---|
-| `src/workers/InferenceScheduler.ts` | Modify | Implement device-specific presets (low/medium/high) |
-| `src/workers/models/DepthModel.ts` | Modify | Add resolution scaling (64×64 fallback for low-end devices) |
-| `src/render/DepthOcclusionPass.ts` | Modify | Add half-resolution occlusion option |
-| `src/render/entities/*.ts` | Modify | LOD system — reduce geometry complexity at distance |
-| `src/utils/PerformanceMonitor.ts` | Create | Real-time FPS, inference time, memory tracking |
+| `src/utils/PerformanceMonitor.ts` | Create | Lightweight FPS / inference / frame-time monitor for debug and tuning |
+| `src/utils/FeatureDetection.ts` | Create | Detect browser/runtime capabilities and choose safe defaults |
+| `src/workers/InferenceScheduler.ts` | Modify | Add runtime profiles and explicit depth-yields-first behavior |
+| `src/workers/AIWorkerManager.ts` | Modify | Surface capability/profile state needed by debug/HUD |
+| `src/main.ts` | Modify | Apply selected profile, expose debug status, and keep fallbacks visible |
+| `src/render/SceneManager.ts` | Modify | Gate optional depth/occlusion quality features based on capability/profile |
 
-**Performance Targets**:
-
-| Metric | Target | Low-End Fallback |
-|---|---|---|
-| Render FPS | ≥ 60 | ≥ 45 |
-| AI Inference FPS | ≥ 25 | ≥ 15 |
-| Depth Occlusion FPS | ≥ 15 | ≥ 10 (or disabled) |
-| End-to-end Latency | < 150ms | < 250ms |
-| Memory | < 256 MB | < 192 MB |
-
-**Device Detection**:
-
-```typescript
-function getDeviceTier(): 'low' | 'medium' | 'high' {
-  const gpu = navigator.gpu;  // WebGPU available = likely high-end
-  const cores = navigator.hardwareConcurrency;
-  const memory = (navigator as any).deviceMemory;  // GB, Chrome only
-
-  if (gpu && cores >= 8 && memory >= 8) return 'high';
-  if (cores >= 4 && memory >= 4) return 'medium';
-  return 'low';
-}
-```
+**Implementation Notes**:
+- Prefer `balanced` as the default profile on supported desktop browsers.
+- Do not overcommit to automatic low/medium/high heuristics based only on `navigator.gpu`; capability fallback should be conservative and debuggable.
+- When under pressure, degrade in this order:
+  1. reduce/disable depth extras
+  2. slow optional depth cadence
+  3. preserve `pose + hands` interaction path
+- Performance work in this phase should improve observability first, then tuning.
 
 **Acceptance Criteria**:
-- [ ] Game auto-detects device tier and adjusts settings
-- [ ] High-end: 60 FPS with all features
-- [ ] Medium: 60 FPS render, 25 FPS AI, depth at half resolution
-- [ ] Low: 45 FPS render, 15 FPS AI, depth disabled
-- [ ] Memory monitoring prevents OOM on low-end devices
+- [ ] Game exposes current runtime profile/capability state in debug mode
+- [ ] Hands-enabled gameplay remains prioritized over depth when budget is tight
+- [ ] A weaker capability path can disable depth/occlusion without breaking V1/V2 gameplay
+- [ ] No new performance system depends on the removed Stage D tangible-object scope
+- [ ] Monitoring/tuning tools are lightweight enough to leave enabled in dev builds
 
 ---
 
-### Phase V2-15: Visual Polish & Juice
+### Phase V2-15: Visual Polish & Readability
 
-**Objective**: Add visual polish to V2-specific features.
+**Objective**: Polish the existing V2 visuals for readability and consistency rather than adding speculative new effects that increase maintenance cost.
 
 **Deliverables**:
 
 | File | Action | Description |
 |---|---|---|
-| `src/render/entities/ThrownOrbVisual.ts` | Modify | Add particle trail, glow, impact burst |
-| `src/render/entities/TangibleWeaponVisual.ts` | Modify | Add shield shimmer, slash trail, block impact sparks |
-| `src/render/vfx/OcclusionEdge.ts` | Create | Soft glow at occlusion boundary for visual clarity |
-| `src/render/vfx/DepthParticles.ts` | Create | Particles that interact with depth (spawn at occlusion boundary) |
-| `src/render/ui/HUDPanel.ts` | Modify | Add V2-specific HUD elements (weapon indicator, hand tracking status) |
+| `src/render/entities/ThrownOrbVisual.ts` | Modify | Final readability pass for trail, flight pulse, impact, and miss fade |
+| `src/render/entities/RedWallVisual.ts` | Modify | Refine projectile-break and success/fail readability |
+| `src/render/entities/MeteorVisual.ts` | Modify | Align projectile-hit readability with RedWall quality bar |
+| `src/render/vfx/ParticleEmitter.ts` | Modify | Tune projectile / wall-break / fail presets for readability vs cost |
+| `src/render/ui/HUDPanel.ts` | Modify | Consolidate hand tracking, grab, and throw feedback into a stable HUD layer |
+| `src/main.ts` | Modify | Final popup/debug/HUD cleanup so success/fail causes are easy to read while playing |
+
+**Implementation Notes**:
+- Do not add a new depth-reactive particle system unless the simpler polish pass proves insufficient.
+- Prioritize fast readability: the player should instantly distinguish `dodge success`, `player hit`, `orb touch`, `throw miss`, and `projectile destroy`.
+- Visual polish must remain compatible with current Three.js + popup + particle architecture.
 
 **Acceptance Criteria**:
-- [ ] Thrown orbs have a satisfying visual trail
-- [ ] Weapon interactions have distinct, readable VFX
-- [ ] Occlusion boundary looks clean and intentional
-- [ ] HUD clearly shows weapon status and hand tracking state
-- [ ] All VFX maintain 60 FPS target
+- [ ] Thrown orb flight path is easy to track during real play
+- [ ] Projectile-caused target destruction is visually distinct from ordinary dodge success
+- [ ] HUD clearly communicates hand tracking, grab owner, and throw readiness without requiring debug mode
+- [ ] VFX additions do not noticeably regress gameplay smoothness on the balanced profile
+- [ ] RedWall / Meteor / BlueOrb feedback reads as one coherent visual language
 
 ---
 
-### Phase V2-16: Cross-Browser Testing & Documentation
+### Phase V2-16: Capability Fallback, Testing & Documentation
 
-**Objective**: Test across browsers, document limitations, and update project docs.
+**Objective**: Lock down what V2 actually supports, verify graceful fallback paths, and update project documentation to match the implemented release scope.
 
 **Deliverables**:
 
 | File | Action | Description |
 |---|---|---|
-| `docs/BROWSER_SUPPORT.md` | Create | Detailed browser compatibility matrix |
-| `docs/V2_GAME_DESIGN.md` | Create | V2-specific game design document |
-| `docs/EVALUATION.md` | Modify | Add V2 evaluation metrics |
-| `README.md` | Modify | Update with V2 features, screenshots, demo video link |
-| `src/utils/FeatureDetection.ts` | Create | Runtime capability detection and graceful degradation |
+| `docs/BROWSER_SUPPORT.md` | Create | Browser/runtime support matrix tied to actual fallback behavior |
+| `docs/EVALUATION.md` | Modify | Add V2 evaluation checklist and manual regression cases |
+| `README.md` | Modify | Update feature list, controls, limitations, and Stage C/Stage D scope |
+| `src/utils/FeatureDetection.ts` | Modify | Surface final human-readable capability flags used by the app |
+| `src/main.ts` | Modify | Show capability/fallback status clearly enough for QA/manual testing |
 
 **Browser Test Matrix**:
 
-| Browser | Version | Pose | Hands | Depth | Occlusion | Weapon | Overall |
-|---|---|---|---|---|---|---|---|
-| Chrome | 120+ | ✅ | ✅ | ✅ | ✅ | ✅ | Full |
-| Edge | 120+ | ✅ | ✅ | ✅ | ✅ | ✅ | Full |
-| Firefox | 121+ | ✅ | ✅ | ❌ | ❌ | ✅ | Partial |
-| Safari | 17+ | ✅ | ✅ | ❌ | ❌ | ✅ | Partial |
+| Browser | Pose | Hands | Depth | Occlusion | Orb Throw | Overall |
+|---|---|---|---|---|---|---|
+| Chrome / Edge (current) | Yes | Yes | Yes | Yes | Yes | Full target |
+| Firefox (current) | Yes | Yes | Optional / verify | Optional / verify | Yes | Partial target |
+| Safari 17+ | Yes | Yes | Optional / verify | Optional / verify | Yes | Partial target |
 
 **Acceptance Criteria**:
-- [ ] All features work in Chrome/Edge
-- [ ] Graceful fallback in Firefox/Safari (no depth, no occlusion, but hands + weapon work)
-- [ ] Feature detection shows clear status on game load
-- [ ] Documentation covers all known limitations
+- [ ] Capability detection reflects the actual active fallback path on the running device/browser
+- [ ] Chrome/Edge path is documented as the primary target
+- [ ] Partial-support browsers fail gracefully instead of silently degrading core gameplay
+- [ ] Manual test checklist covers pose-only, pose+hands, pose+hands+depth, and no-hands fallback paths
+- [ ] Docs no longer imply Stage D tangible-object features are still planned
 
 ---
 
 ## Phase Dependency Graph
 
+Active dependency chain for the current V2 release ends at `V2-10` before moving directly to `V2-14..V2-16`. References to `V2-11..V2-13` remain archived only and are not part of the active delivery scope.
+
 ```
 V2-01 (Worker Infra)
-  └── V2-02 (Scheduling)
-        └── V2-03 (Depth Pipeline)
-              └── V2-04 (Occlusion Shader)
-                    └── V2-05 (Depth Smoothing)
-                          └── V2-06 (Z-Axis Movement)
+  -> V2-02 (Scheduling)
+        -> V2-03 (Depth Pipeline)
+              -> V2-04 (Occlusion Shader)
+                    -> V2-05 (Depth Smoothing)
+                          -> V2-06 (Z-Axis Movement)
 
 V2-01 (Worker Infra)
-  └── V2-07 (Hand Landmarker)
-        └── V2-08 (Pinch Detection)
-              └── V2-09 (Grab & Throw)
-                    └── V2-10 (Hand Polish)
+  -> V2-07 (Hand Landmarker)
+        -> V2-08 (Pinch Detection)
+              -> V2-09 (Grab & Throw)
+                    -> V2-10 (Hand Polish)
 
 V2-06 (Z-Axis) + V2-10 (Hand Polish)
-  └── V2-11 (Color Tracking)
-        └── V2-12 (Weapon Mapping)
-              └── V2-13 (Game Integration)
-
-V2-13 (Game Integration)
-  └── V2-14 (Performance)
-        └── V2-15 (Visual Polish)
-              └── V2-16 (Testing & Docs)
+  -> V2-14 (Runtime Performance Profiles)
+        -> V2-15 (Visual Polish & Readability)
+              -> V2-16 (Capability Fallback, Testing & Docs)
 ```
 
 ---
 
 ## Estimated Timeline
 
+Active delivery scope excludes `V2-11..V2-13`. The practical plan is `13 phases` across `4 active stages`.
+
 | Stage | Phases | Effort | Dependencies |
 |---|---|---|---|
-| A: Multi-Threaded Foundation | V2-01 → V2-03 | 3-4 weeks | None |
-| B: Depth Occlusion | V2-04 → V2-06 | 2-3 weeks | Stage A complete |
-| C: Hand Interaction | V2-07 → V2-10 | 3-4 weeks | V2-01 complete (can parallel with Stage B) |
-| D: Tangible Objects | V2-11 → V2-13 | 2-3 weeks | Stages B + C complete |
-| E: Polish | V2-14 → V2-16 | 2 weeks | Stage D complete |
-| **Total** | **16 phases** | **12-16 weeks** | |
+| A: Multi-Threaded Foundation | V2-01 -> V2-03 | 3-4 weeks | None |
+| B: Depth Occlusion | V2-04 -> V2-06 | 2-3 weeks | Stage A complete |
+| C: Hand Interaction | V2-07 -> V2-10 | 3-4 weeks | V2-01 complete (can parallel with Stage B) |
+| D: Polish & Optimization | V2-14 -> V2-16 | 2-3 weeks | Stages B + C complete |
+| **Total** | **13 phases** | **10-14 weeks** | |
 
 ---
 
@@ -773,11 +766,10 @@ V2-13 (Game Integration)
 | Risk | Impact | Likelihood | Mitigation |
 |---|---|---|---|
 | MediaPipe Worker + OffscreenCanvas fails in Safari | Medium | High | Fallback to `createImageBitmap`; accept lower FPS |
-| Depth model too slow on mid-range hardware | High | Medium | Make depth optional; scheduler auto-disables under budget |
-| Hand tracking jitter causes false grabs | Medium | Medium | Increase grab radius + hold duration; add confidence threshold |
-| Color tracking fails under variable lighting | Medium | High | Provide manual HSV tuning; suggest consistent lighting in tutorial |
-| Memory pressure from 3 models + Three.js | High | Medium | Lazy model loading; monitor heap; unload unused models |
-| WebGPU depth estimation unavailable | Low | High | Fall back to no occlusion (V1 behavior); depth is enhancement, not requirement |
+| Depth model too slow on mid-range hardware | High | Medium | Make depth optional; scheduler auto-disables or deprioritizes under budget |
+| Hand tracking jitter causes false grabs | Medium | Medium | Keep hysteresis, hold duration, cooldown, and responsive-but-bounded smoothing |
+| Memory pressure from 3 models + Three.js | High | Medium | Monitor frame/inference cost, keep optional effects lightweight, unload or disable nonessential extras |
+| Browser capability mismatch around depth/occlusion | Medium | High | Detect capabilities at runtime and make the fallback path visible to QA/users |
 
 ---
 
@@ -787,4 +779,7 @@ V2-13 (Game Integration)
 |---|---|---|---|
 | *(none)* | — | All V2 features use existing `@mediapipe/tasks-vision` + vanilla JS | — |
 
-V2 intentionally avoids new npm dependencies. MediaPipe's Hand Landmarker and depth estimation are already available in `@mediapipe/tasks-vision` v0.10.35. Color tracking and physics are implemented in vanilla TypeScript (< 200 lines each).
+V2 intentionally avoids new npm dependencies. MediaPipe's Hand Landmarker and depth estimation are already available in `@mediapipe/tasks-vision` v0.10.35, and the remaining V2 runtime/gameplay systems stay in vanilla TypeScript.
+
+
+

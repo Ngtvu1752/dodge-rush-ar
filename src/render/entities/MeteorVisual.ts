@@ -82,6 +82,7 @@ export class MeteorVisual implements VisualAdapter {
   private prevResult: string | null = null
   private scaleMultiplier = 1
   private opacityMultiplier = 1
+  private projectilePulse = 0
 
   constructor() {
     this.group = new THREE.Group()
@@ -186,12 +187,20 @@ export class MeteorVisual implements VisualAdapter {
 
     this.emberLight.intensity = 0.15 + emberStrength * 1.6
     this.emberLight.distance = 280 + emberStrength * 180
+    if (this.projectilePulse > 0) {
+      this.projectilePulse = Math.max(0, this.projectilePulse - 0.08)
+      this.emberLight.intensity += this.projectilePulse * 3.5
+    }
 
     if (obstacle.result && obstacle.result !== this.prevResult) {
       if (obstacle.result === 'fail') {
         this.playHitFlash()
       } else if (obstacle.result === 'success') {
-        this.playDodgeFade()
+        if (obstacle.resultCause === 'projectile') {
+          this.playProjectileBurst()
+        } else {
+          this.playDodgeFade()
+        }
       }
       this.prevResult = obstacle.result
     }
@@ -277,6 +286,44 @@ export class MeteorVisual implements VisualAdapter {
       gsap.to(material, {
         opacity: 0,
         duration: 0.3,
+        ease: 'power2.out',
+      })
+    }
+  }
+
+  private playProjectileBurst(): void {
+    gsap.killTweensOf(this)
+    this.scaleMultiplier = 1
+    this.opacityMultiplier = 1
+    this.projectilePulse = 1
+
+    for (const material of this.materials) {
+      gsap.killTweensOf(material)
+      material.emissive.set(0xffd6a0)
+      material.emissiveIntensity = 2.8
+      gsap.to(material, {
+        opacity: 0,
+        emissiveIntensity: 0.15,
+        duration: 0.28,
+        ease: 'power2.out',
+      })
+    }
+
+    gsap.to(this, {
+      scaleMultiplier: 1.36,
+      opacityMultiplier: 0,
+      duration: 0.34,
+      ease: 'power3.out',
+    })
+
+    if (this.haloMesh) {
+      const haloMaterial = this.haloMesh.material as THREE.MeshBasicMaterial
+      gsap.killTweensOf(haloMaterial)
+      haloMaterial.opacity = 0.55
+      haloMaterial.color.set(0xffdcb3)
+      gsap.to(haloMaterial, {
+        opacity: 0,
+        duration: 0.24,
         ease: 'power2.out',
       })
     }

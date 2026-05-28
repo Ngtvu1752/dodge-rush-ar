@@ -25,8 +25,6 @@ export class MenuScreen {
 
   update(ctx: UIContext): void {
     const state = ctx.state
-
-    // Re-render when state changes, or when calibration/loading message changes
     const calibrationChanged = state === 'Calibration' && ctx.calibrationStatus !== this.currentCalibrationStatus
     const loadingChanged = (state === 'Loading' || state === 'CameraPermission') && ctx.loadingMessage !== this.currentLoadingMessage
     if (state === this.currentState && !calibrationChanged && !loadingChanged) return
@@ -34,7 +32,6 @@ export class MenuScreen {
     this.currentCalibrationStatus = ctx.calibrationStatus
     this.currentLoadingMessage = ctx.loadingMessage
 
-    // Hide for states that don't need a menu
     if (state === 'Playing' || state === 'Countdown') {
       this.overlay.style.display = 'none'
       return
@@ -62,21 +59,15 @@ export class MenuScreen {
         break
     }
 
-    // Animate in
-    gsap.fromTo(this.content,
-      { scale: 0.9, opacity: 0 },
-      { scale: 1, opacity: 1, duration: 0.3, ease: 'back.out(1.5)' },
-    )
+    gsap.fromTo(this.content, { scale: 0.9, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: 'back.out(1.5)' })
   }
 
   private renderLoading(ctx: UIContext): void {
     const hasError = ctx.cameraError || ctx.loadingMessage.includes('failed') || ctx.loadingMessage.includes('crashed')
-    const message = ctx.cameraError || ctx.loadingMessage || 'Requesting camera access...'
+    const message = (ctx.cameraError || ctx.loadingMessage || 'Requesting camera access...').replace(/\n/g, '<br>')
     this.content.innerHTML = `
       <h1 class="menu-title">Dodge Rush AR</h1>
-      <p class="menu-text ${hasError ? 'text-error' : ''}">
-        ${message}
-      </p>
+      <p class="menu-text ${hasError ? 'text-error' : ''}">${message}</p>
       ${!hasError && ctx.loadingMessage ? '<div class="loading-spinner"></div>' : ''}
     `
   }
@@ -109,16 +100,16 @@ export class MenuScreen {
       <p class="menu-hint">Press C to Recalibrate</p>
       <div class="instruction-cards">
         <div class="instruction-card glass-panel">
-          <span class="card-icon">⬅➡️</span>
+          <span class="card-icon">LR</span>
           <span class="card-text">Dodge red walls</span>
         </div>
         <div class="instruction-card glass-panel">
-          <span class="card-icon">🙇</span>
+          <span class="card-icon">SQ</span>
           <span class="card-text">Squat under lasers</span>
         </div>
         <div class="instruction-card glass-panel">
-          <span class="card-icon">👆</span>
-          <span class="card-text">Touch blue orbs</span>
+          <span class="card-icon">ORB</span>
+          <span class="card-text">Touch or grab blue orbs</span>
         </div>
       </div>
     `
@@ -162,10 +153,7 @@ export class MenuScreen {
     this.overlay.style.display = ''
     this.content.innerHTML = `<h1 class="countdown-text ${value === 'GO!' ? 'text-glow' : ''}">${value}</h1>`
     this.currentState = 'Countdown'
-    gsap.fromTo(this.content,
-      { scale: 2, opacity: 0 },
-      { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' },
-    )
+    gsap.fromTo(this.content, { scale: 2, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.25, ease: 'back.out(2)' })
   }
 
   hide(): void {

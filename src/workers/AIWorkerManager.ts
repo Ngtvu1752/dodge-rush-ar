@@ -7,6 +7,7 @@ import type {
   ModelType,
   DepthMapData,
   HandData,
+  RuntimeProfile,
 } from './AITypes'
 
 const EMPTY_POSE: PoseData = {
@@ -130,6 +131,12 @@ export class AIWorkerManager {
       this._lastDepthMap = null
     }
     const cmd: AICommand = { type: 'setModels', models }
+    this.worker.postMessage(cmd)
+  }
+
+  setRuntimeProfile(profile: RuntimeProfile): void {
+    if (!this.worker || !this._ready) return
+    const cmd: AICommand = { type: 'setRuntimeProfile', profile }
     this.worker.postMessage(cmd)
   }
 

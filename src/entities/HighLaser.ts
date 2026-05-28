@@ -28,6 +28,7 @@ export class HighLaser implements Obstacle {
   inHitZone = false
   graceStart = 0
   result: 'success' | 'fail' | null = null
+  resultCause: 'dodge' | 'projectile' | 'touch' | undefined = undefined
   private canvasW: number
   private canvasH: number
 

@@ -65,6 +65,7 @@ export class DepthOcclusionPass extends Pass {
   private aiDepthTexture: THREE.DataTexture
   private processor: DepthMapProcessor
   private enabled_ = true
+  private halfResolution = false
 
   constructor(width: number, height: number) {
     super()
@@ -130,8 +131,9 @@ export class DepthOcclusionPass extends Pass {
 
   setSize(width: number, height: number): void {
     const pixelRatio = window.devicePixelRatio
-    const w = Math.floor(width * pixelRatio)
-    const h = Math.floor(height * pixelRatio)
+    const resolutionScale = this.halfResolution ? 0.5 : 1
+    const w = Math.max(1, Math.floor(width * pixelRatio * resolutionScale))
+    const h = Math.max(1, Math.floor(height * pixelRatio * resolutionScale))
 
     this.sceneRT.setSize(w, h)
     this.depthTexture.image = { width: w, height: h, depth: 1 }
@@ -140,6 +142,10 @@ export class DepthOcclusionPass extends Pass {
 
   setEnabled(enabled: boolean): void {
     this.enabled_ = enabled
+  }
+
+  setHalfResolution(enabled: boolean): void {
+    this.halfResolution = enabled
   }
 
   get isEnabled(): boolean {

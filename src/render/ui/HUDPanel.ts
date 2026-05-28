@@ -9,28 +9,28 @@ export class HUDPanel {
   private timerEl: HTMLDivElement
   private handEl: HTMLDivElement
   private grabEl: HTMLDivElement
+  private runtimeEl: HTMLDivElement
   private prevScore = -1
   private prevCombo = -1
 
   constructor(root: HTMLElement) {
     this.root = root
 
-    // Top-right panel: score, combo, level
     const rightPanel = document.createElement('div')
     rightPanel.className = 'glass-panel hud-panel hud-right'
     rightPanel.innerHTML = `
-      <div class="hud-score" id="hud-score">0</div>
-      <div class="hud-combo" id="hud-combo">Combo: 0  x1.0</div>
-      <div class="hud-level" id="hud-level">Easy</div>
-      <div class="hud-level" id="hud-hand">Hands: SEARCHING</div>
-      <div class="hud-level" id="hud-grab">No grab</div>
+      <div class=hud-score id=hud-score>0</div>
+      <div class=hud-combo id=hud-combo>Combo: 0  x1.0</div>
+      <div class=hud-level id=hud-level>Easy</div>
+      <div class=hud-level id=hud-hand>Hands: SEARCHING</div>
+      <div class=hud-level id=hud-grab>Grab: none</div>
+      <div class=hud-level id=hud-runtime>Runtime: BALANCED</div>
     `
     this.root.appendChild(rightPanel)
 
-    // Top-left: timer
     const leftPanel = document.createElement('div')
     leftPanel.className = 'glass-panel hud-panel hud-left'
-    leftPanel.innerHTML = `<div class="hud-timer" id="hud-timer">60s</div>`
+    leftPanel.innerHTML = `<div class=hud-timer id=hud-timer>60s</div>`
     this.root.appendChild(leftPanel)
 
     this.scoreEl = rightPanel.querySelector('#hud-score')!
@@ -39,10 +39,10 @@ export class HUDPanel {
     this.timerEl = leftPanel.querySelector('#hud-timer')!
     this.handEl = rightPanel.querySelector('#hud-hand')!
     this.grabEl = rightPanel.querySelector('#hud-grab')!
+    this.runtimeEl = rightPanel.querySelector('#hud-runtime')!
   }
 
   update(ctx: UIContext): void {
-    // Score with bounce animation on change
     if (ctx.score !== this.prevScore) {
       this.scoreEl.textContent = `${ctx.score}`
       if (this.prevScore >= 0) {
@@ -51,7 +51,6 @@ export class HUDPanel {
       this.prevScore = ctx.score
     }
 
-    // Combo with threshold bounce
     if (ctx.combo !== this.prevCombo) {
       this.comboEl.textContent = `Combo: ${ctx.combo}  x${ctx.multiplier.toFixed(1)}`
       if (ctx.combo >= 20) {
@@ -68,9 +67,26 @@ export class HUDPanel {
 
     this.levelEl.textContent = ctx.difficulty
     this.timerEl.textContent = `${Math.ceil(ctx.remaining)}s`
-    this.handEl.textContent = `Hands: ${ctx.handTrackingStatus}  ${ctx.throwReady ? 'THROW READY' : ctx.pinchStatus}`
-    this.handEl.style.color = ctx.throwReady ? '#88ddff' : '#cfd8ff'
-    this.grabEl.textContent = ctx.grabStatus
+
+    const handsSearching = ctx.handTrackingStatus !== 'TRACKING'
+    this.handEl.textContent = handsSearching
+      ? `Hands: ${ctx.handTrackingStatus}`
+      : `Hands: ${ctx.throwReady ? 'THROW READY' : ctx.pinchStatus}`
+    this.handEl.style.color = handsSearching
+      ? '#d7dce7'
+      : ctx.throwReady
+        ? '#88ddff'
+        : '#cfd8ff'
+
+    this.grabEl.textContent = ctx.grabStatus.startsWith('Grabbed')
+      ? ctx.grabStatus
+      : `Grab: ${ctx.throwReady ? 'release to throw' : 'none'}`
+    this.grabEl.style.color = ctx.grabStatus.startsWith('Grabbed')
+      ? '#9df7d0'
+      : '#d7dce7'
+
+    this.runtimeEl.textContent = ctx.runtimeStatus
+    this.runtimeEl.style.color = ctx.runtimeStatus.includes('FALLBACK') ? '#ffd27a' : '#b8ecff'
   }
 
   show(): void {
