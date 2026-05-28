@@ -74,7 +74,40 @@ Dev helpers during gameplay:
 - `O`: spawn a debug BlueOrb
 - `S`: success popup test
 - `T`: hit popup test
-- `M`: miss popup test
+
+## Sound Effects (SFX)
+
+The game uses Web Audio API to generate procedural sound effects — no external audio files required. All sounds are synthesized in real-time using oscillators and gain envelopes.
+
+### Collision SFX
+| Event | Sound |
+|---|---|
+| RedWall / Meteor dodged | Bright rising chime |
+| HighLaser squatted | Quick positive blip |
+| BlueOrb touched | Sparkle with harmonic |
+| BlueOrb missed | Descending wobble |
+| Player hit by obstacle | Impact thud |
+| Thrown orb bullseye | Triumphant rising tone |
+| Wall destroyed by projectile | Shatter/crash |
+| Meteor destroyed by projectile | Explosive boom |
+
+### Hand Interaction SFX
+| Event | Sound |
+|---|---|
+| Grab BlueOrb | Quick pop |
+| Throw BlueOrb | Whoosh |
+
+### Game Flow SFX
+| Event | Sound |
+|---|---|
+| Countdown tick (3, 2, 1) | Tick |
+| GO! | Exciting tone |
+| Game over | Descending doom |
+| Combo multiplier up (x1.5 / x2.0) | Level-up chime |
+| Combo break | Harsh reset |
+| Difficulty change (Easy → Medium → Hard) | Escalation |
+
+Toggle mute with `M` key.
 
 ## Runtime Profiles and Fallback
 
